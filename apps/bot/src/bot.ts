@@ -1,10 +1,8 @@
 import client from "lib/Client";
 import "dotenv/config";
-import { initLogger } from "@robo/logger";
+import { initLogger, Logger } from "@robo/logger";
 
-import env from "@robo/config/env";
-
-import { Logger } from "@robo/logger";
+import env from "@robo/config";
 
 import { Collection } from "discord.js";
 import { CommandType } from "@robo/shared";
@@ -19,6 +17,7 @@ await registeCommands();
 
 initLogger({
     level: "debug",
+    json: false,
 });
 
 await client.login(env.token.value).then(() => {

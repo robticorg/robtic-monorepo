@@ -13,7 +13,6 @@ export class Ticket {
 
     async create(interaction: Interaction, data?: TicketProps) {
         try {
-
             if(!data) throw new Error("There is no Data to create ticket");
             const id = await this.ticket.create(interaction, data);
             if(!id) throw new Error("Failed to create ticket id");

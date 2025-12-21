@@ -14,9 +14,9 @@
   "include": ["src", "tests"],
   "exclude": ["dist"],
   "references": [
-    { "path": "../../packages/shared" },
-    { "path": "../../packages/config" },
-    { "path": "../../packages/database" },
-    { "path": "../../packages/logger" }
+    { "path": "../../libs/shared" },
+    { "path": "../../libs/config" },
+    { "path": "../../libs/database" },
+    { "path": "../../libs/logger" }
   ]
 }

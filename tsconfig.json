@@ -6,8 +6,8 @@
     { "path": "apps/dashboard" },
     { "path": "apps/admin/interface" },
     { "path": "apps/admin/server" },
-    { "path": "packages/config" },
-    { "path": "packages/database" },
-    { "path": "packages/shared" }
+    { "path": "libs/config" },
+    { "path": "libs/database" },
+    { "path": "libs/shared" }
   ]
 }

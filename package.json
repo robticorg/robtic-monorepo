@@ -2,13 +2,13 @@
     "name": "robtic-monorepo",
     "workspaces": [
         "apps/*",
-        "packages/*"
+        "libs/*"
     ],
     "type": "module",
     "scripts": {
-        "build": "bun run build:packages && bun run build:apps",
+        "build": "bun run build:libs && bun run build:apps",
         "build:apps": "bun run --filter './apps/*' build",
-        "build:packages": "bun run --filter './packages/*' build",
+        "build:libs": "bun run --filter './libs/*' build",
         "build:config": "bun run --filter @robo/config build",
         "build:logger": "bun run --filter @robo/logger build",
         "build:shared": "bun run --filter @robo/shared build",
