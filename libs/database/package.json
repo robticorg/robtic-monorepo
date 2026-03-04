@@ -6,7 +6,8 @@
   "scripts": {
     "generate": "bunx prisma generate --schema=./prisma/schema.prisma",
     "migrate": "bunx prisma migrate dev --name init --schema=./prisma/schema.prisma",
-    "studio": "bunx prisma studio --schema=./prisma/schema.prisma"
+    "studio": "bunx prisma studio --schema=./prisma/schema.prisma",
+    "seed": "bun run prisma/seed.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.0",
@@ -20,8 +21,8 @@
   },
   "exports": {
     ".": {
-      "import": "./src/db.ts",
-      "require": "./src/db.ts"
+      "import": "./dist/db.js",
+      "require": "./dist/db.js"
     }
   }
 }

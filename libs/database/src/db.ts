@@ -11,9 +11,13 @@ import { GuildService } from "./services/guild.service";
 import { TicketService } from "./services/ticket.service";
 import { PanelService } from "./services/panel.service";
 import { FormService } from "./services/form.service";
+import { PermissionService } from "./services/permission.service";
 
 // --- Types Export ---
-import { Guild, TicketPanel, Ticket, Panel, FormData } from "../generated/prisma";
+import { Guild, TicketPanel, Ticket, Panel, FormData, Permission } from "../generated/prisma";
+
+// --- Default Export ---
+import {DefaultPermissions} from "./default/persmession"
 
 // --- Main Exports ---
 export {
@@ -21,10 +25,13 @@ export {
     TicketService,
     PanelService,
     FormService,
+    PermissionService,
+    DefaultPermissions,
     type Guild,
     type TicketPanel,
     type Ticket,
     type Panel,
     type FormData,
+    type Permission,
     prisma
 };

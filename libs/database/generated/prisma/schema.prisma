@@ -8,6 +8,8 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ── Enums ──────────────────────────────────────────────
+
 enum PanelType {
   BUTTON
   MENU
@@ -18,40 +20,64 @@ enum TicketStatus {
   CLOSED
 }
 
+// ── Guild ──────────────────────────────────────────────
+
 model Guild {
-  id        String   @id @default(uuid())
-  config    Json? // guild-level settings, roles, permissions, etc.
-  panels    Panel[]
-  createdAt DateTime @default(now())
+  id          String       @id /// Discord guild (server) ID
+  config      Json? /// Guild-level settings (prefix, locale, etc.)
+  panels      Panel[]
+  permissions Permission[]
+  createdAt   DateTime     @default(now())
 }
+
+// ── Permission ─────────────────────────────────────────
+/// Per-guild mapping: action → required Discord permissions + allowed role IDs.
+/// Each row is one action (e.g. "close", "delete") for one guild.
+
+model Permission {
+  id          String   @id @default(uuid())
+  guildId     String
+  guild       Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  action      String /// Button / action key: "close", "reopen", "delete", …
+  permissions String[] /// Discord permission flags as strings: ["ManageChannels", "SendMessages"]
+  roleIds     String[] /// Discord role IDs that are allowed (OR logic with permissions)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([guildId, action]) /// One config per action per guild
+  @@index([guildId])
+}
+
+// ── Panel ──────────────────────────────────────────────
 
 model Panel {
   id           String         @id @default(uuid())
   guildId      String
-  guild        Guild          @relation(fields: [guildId], references: [id])
+  guild        Guild          @relation(fields: [guildId], references: [id], onDelete: Cascade)
   name         String
   type         PanelType      @default(BUTTON)
   placeholder  String?
   templateId   String?
   template     PanelTemplate? @relation(fields: [templateId], references: [id])
   ticketPanels TicketPanel[]
-  embed        Json? // embed config (author, footer, fields, color, etc.)
-
-  createdAt DateTime @default(now())
+  embed        Json? /// Embed config (author, footer, fields, color, etc.)
+  createdAt    DateTime       @default(now())
 }
 
 model PanelTemplate {
   id        String   @id @default(uuid())
   name      String
-  data      Json? // pre-saved panel structure
-  createdAt DateTime @default(now())
+  data      Json? /// Pre-saved panel structure
   panels    Panel[]
+  createdAt DateTime @default(now())
 }
+
+// ── Ticket Panel (button inside a panel) ───────────────
 
 model TicketPanel {
   id          String       @id @default(uuid())
   panelId     String
-  panel       Panel        @relation(fields: [panelId], references: [id])
+  panel       Panel        @relation(fields: [panelId], references: [id], onDelete: Cascade)
   name        String
   description String?
   emoji       String?
@@ -62,24 +88,27 @@ model TicketPanel {
   formId      String?
   form        FormData?    @relation(fields: [formId], references: [id])
   buttons     ButtonData[]
-  channels    Json?
+  channels    Json? /// Category + log channel IDs
   tickets     Ticket[]
-  data        Json? // embed, permissions, roles, channels, etc.
-
-  createdAt DateTime @default(now())
+  data        Json? /// Extra metadata
+  createdAt   DateTime     @default(now())
 }
+
+// ── Ticket ─────────────────────────────────────────────
 
 model Ticket {
-  id        String       @id
+  id        String       @id /// Channel ID used as primary key
   userId    String?      @default("")
   panelId   String
-  panel     TicketPanel  @relation(fields: [panelId], references: [id])
+  panel     TicketPanel  @relation(fields: [panelId], references: [id], onDelete: Cascade)
   claimer   String?
   status    TicketStatus @default(OPEN)
-  embed     Json? // actual ticket message embed
-  data      Json? // transcript, metadata, etc.
+  embed     Json? /// Ticket message embed snapshot
+  data      Json? /// Transcript, metadata, etc.
   createdAt DateTime     @default(now())
 }
+
+// ── Form ───────────────────────────────────────────────
 
 model FormData {
   id           String        @id @default(uuid())
@@ -91,21 +120,23 @@ model FormData {
 model Question {
   id          String   @id @default(uuid())
   formId      String
-  form        FormData @relation(fields: [formId], references: [id])
+  form        FormData @relation(fields: [formId], references: [id], onDelete: Cascade)
   name        String
   placeholder String?
   required    Boolean  @default(true)
-  style       String   @default("SHORT") // short / paragraph
+  style       String   @default("SHORT") /// SHORT | PARAGRAPH
   minLength   Int?
   maxLength   Int?
 }
 
+// ── Button ─────────────────────────────────────────────
+
 model ButtonData {
   id            String      @id @default(uuid())
   ticketPanelId String
-  ticketPanel   TicketPanel @relation(fields: [ticketPanelId], references: [id])
+  ticketPanel   TicketPanel @relation(fields: [ticketPanelId], references: [id], onDelete: Cascade)
   name          String
   style         String
   emoji         String?
-  config        Json? // for dynamic button behavior / permissions
+  config        Json? /// Dynamic button behavior / overrides
 }

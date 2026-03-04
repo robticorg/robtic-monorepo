@@ -127,6 +127,16 @@ exports.Prisma.GuildScalarFieldEnum = {
   createdAt: 'createdAt'
 };
 
+exports.Prisma.PermissionScalarFieldEnum = {
+  id: 'id',
+  guildId: 'guildId',
+  action: 'action',
+  permissions: 'permissions',
+  roleIds: 'roleIds',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
 exports.Prisma.PanelScalarFieldEnum = {
   id: 'id',
   guildId: 'guildId',
@@ -234,6 +244,7 @@ exports.TicketStatus = exports.$Enums.TicketStatus = {
 
 exports.Prisma.ModelName = {
   Guild: 'Guild',
+  Permission: 'Permission',
   Panel: 'Panel',
   PanelTemplate: 'PanelTemplate',
   TicketPanel: 'TicketPanel',
