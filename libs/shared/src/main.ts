@@ -1,7 +1,6 @@
 // --- utils ---
 
 // --- data types ---
-import type { CommandType } from "./types/client";
 import type { EmbedData, Field, channelProps, LogsChannelProps } from "./types/discord";
 import type { AccessType, ticketBy, TicketStatus, StatusPermissionMap, PermissionProps } from "./types/ticket";
 
@@ -13,7 +12,6 @@ import type { LogLevel, LoggerConfig, DatabaseLogType } from "./types/logger";
 
 export {
     // --- types :
-    CommandType,
     EmbedData,
     Field,
     channelProps,
