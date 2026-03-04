@@ -1,10 +1,14 @@
 import { Events, Interaction } from "discord.js";
 import { FormService, TicketService } from "@robo/db";
-import { Ticket } from "@/components/_class/ticket";
-import { Modal } from "./_class/modal";
+import { Ticket, Modal } from "@/components/_class";
 import { InteractionUtils } from "@/lib/interactionUtils";
 import TicektAccess from "@/utils/interaction/ticektAccess";
 import { Logger } from "@robo/logger";
+
+const ticket = new Ticket(new TicketService());
+const modal = new Modal();
+const ticketData = new TicketService();
+const formData = new FormService();
 
 export default {
     name: Events.InteractionCreate,
@@ -12,13 +16,7 @@ export default {
     run: async (interaction: Interaction) => {
         if (!interaction.isButton() && !interaction.isStringSelectMenu()) return;
 
-        const ticket = new Ticket();
-        const modal = new Modal();
-        const ticketData = new TicketService();
-        const formData = new FormService();
-
         try {
-
             const checkIsTicket = interaction.isButton()
                 ? interaction.customId.startsWith("ticket_")
                 : interaction.customId.startsWith("menu_");
@@ -29,21 +27,17 @@ export default {
                 ? interaction.customId.replace("ticket_", "")
                 : interaction.values[0];
 
-                
             const found = await ticketData.panelFind(ticketId);
-
-            
             if (!found) return;
 
-            if (await TicektAccess(interaction, found?.id)) {
+            if (await TicektAccess(interaction, found.id)) {
                 await InteractionUtils.safeDefer(interaction);
                 await InteractionUtils.safeReply(interaction, "❌ you already have a ticket open");
                 return;
-            };
-            
-            if (found?.hasForm && found?.formId) {
-                const formFound = await formData.find(found.formId);
+            }
 
+            if (found.hasForm && found.formId) {
+                const formFound = await formData.find(found.formId);
                 if (formFound) {
                     return modal.create(interaction, formFound);
                 }
@@ -56,7 +50,7 @@ export default {
             Logger.error("[TicketHandler]", err);
             await InteractionUtils.safeReply(
                 interaction,
-                "❌ Failed to process this interaction. Please try again."
+                "❌ Failed to process this interaction. Please try again.",
             );
         }
     },

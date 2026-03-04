@@ -22,7 +22,8 @@ export class Modal {
                 .setCustomId(questionFound[0].id)
                 .setLabel(questionFound[0].name)
                 .setPlaceholder(questionFound[0].placeholder || "")
-                .setStyle(questionFound[0].style === "PARAGRAPH" ? TextInputStyle.Paragraph : TextInputStyle.Short);
+                .setStyle(questionFound[0].style === "PARAGRAPH" ? TextInputStyle.Paragraph : TextInputStyle.Short)
+                .setRequired(questionFound[0].required);
                 
             const q = new ActionRowBuilder<TextInputBuilder>().addComponents(question);
             modal.addComponents(q);

@@ -4,10 +4,9 @@
   "references": [
     { "path": "apps/bot" },
     { "path": "apps/dashboard" },
-    { "path": "apps/admin/interface" },
-    { "path": "apps/admin/server" },
-    { "path": "packages/config" },
-    { "path": "packages/database" },
-    { "path": "packages/shared" }
+    { "path": "apps/api" },
+    { "path": "libs/config" },
+    { "path": "libs/database" },
+    { "path": "libs/shared" }
   ]
 }

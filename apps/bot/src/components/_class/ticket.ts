@@ -1,67 +1,135 @@
 import { InteractionUtils } from "@/lib/interactionUtils";
-import { Interaction } from "discord.js";
-import { TicketUtils } from "@/service/ticket";
+import { ChannelType, Interaction, OverwriteResolvable, PermissionsBitField } from "discord.js";
 import { Logger } from "@robo/logger";
-import { TicketProps } from "@robo/shared";
+import { TicketProps, channelProps, LogsChannelProps } from "@robo/shared";
 import { TicketService } from "@robo/db";
+import { messages } from "@/lib/messages";
+import { row } from "@/Permissions/buttons";
+import { Created } from "@/components/_embeds/TicketEmbed";
+import { sendTicketLog } from "@/utils/ticketLogger";
 
+interface TicketChannelConfig {
+    name: string;
+    category: string | null;
+    supportRoleIds?: string[];
+    logChannels?: LogsChannelProps;
+}
+
+/**
+ * High-level ticket orchestrator.
+ * 
+ * Coordinates between the low-level Discord channel service (`TicketUtils`)
+ * and the database persistence layer (`TicketService`).
+ * 
+ * Dependencies are injected via the constructor so the class can be
+ * extended or tested with mocks without changing call-sites.
+ */
 export class Ticket {
-    constructor(
-        private ticket = new TicketUtils(),
-        private ticketData = new TicketService()
-    ) { }
 
+    constructor(private dbService: TicketService) {
+        this.dbService = dbService;
+    }
+
+    // ── Helpers ───────────────────────────────────────
+
+    /**
+     * Extracts the channel config stored in the ticket-panel `channels` JSON.
+     */
+    private extractChannelData(panel: { channels?: unknown } | null): channelProps | null {
+        return (panel?.channels as channelProps) ?? null;
+    }
+
+    // ── Public API ───────────────────────────────────
+
+    /**
+     * Creates a new ticket (Discord channel + DB row).
+     */
     async create(interaction: Interaction, data?: TicketProps) {
         try {
+            if (!data) {
+                return InteractionUtils.safeReply(interaction, messages.error.ticketData);
+            }
 
-            if(!data) throw new Error("There is no Data to create ticket");
-            const id = await this.ticket.create(interaction, data);
-            if(!id) throw new Error("Failed to create ticket id");
-            await this.ticketData.create(id, interaction.user.id, data.id!);
-        } catch (err) {
-            Logger.error(`[Ticket Create Error] ${err}`);
-            await InteractionUtils.safeReply(
-                interaction,
-                "❌ Failed to create ticket channel. Check permissions."
-            );
-        }
-    }
+            const channelData = this.extractChannelData(data);
 
-    async close(interaction: Interaction, channelId: string | undefined) {
-        try {
-            const found = await this.ticketData.find("channel", interaction.channel?.id!);
+            const config: TicketChannelConfig = {
+                name: data.name || "ticket",
+                category: channelData?.category ?? null,
+                supportRoleIds: [], // extend from guild-config / panel `data` later
+                logChannels: channelData?.logs,
+            };
 
-            if(!found) return await InteractionUtils.safeReply(interaction, "You don't have any open ticket.");
+            // Inline TicketUtils.create logic
+            const guild = interaction.guild;
+            if (!guild) {
+                await InteractionUtils.safeReply(interaction, messages.error.main);
+                return;
+            }
 
-            if(found?.status === "CLOSED") return await InteractionUtils.safeReply(interaction, "Your ticket is already closed.");
-            this.ticket.close(interaction, channelId!).then(async () => {
-                if(channelId) {
-                    await this.ticketData.update(found.id, { status: "CLOSED" });
+            const permissionOverwrites: OverwriteResolvable[] = [
+                {
+                    id: guild.roles.everyone,
+                    deny: [PermissionsBitField.Flags.ViewChannel],
+                },
+                {
+                    id: interaction.user.id,
+                    allow: [
+                        PermissionsBitField.Flags.ViewChannel,
+                        PermissionsBitField.Flags.SendMessages,
+                        PermissionsBitField.Flags.AttachFiles,
+                        PermissionsBitField.Flags.EmbedLinks,
+                    ],
+                },
+            ];
 
-                    const channel = interaction.guild?.channels.cache.get(channelId!);
-                    if(channel?.isSendable()) {
-                        channel.send("🔒 This ticket has been closed.");
-                    }
+            if (config.supportRoleIds?.length) {
+                for (const roleId of config.supportRoleIds) {
+                    permissionOverwrites.push({
+                        id: roleId,
+                        allow: [
+                            PermissionsBitField.Flags.ViewChannel,
+                            PermissionsBitField.Flags.SendMessages,
+                        ],
+                    });
                 }
+            }
+
+            const channel = await guild.channels.create({
+                parent: config.category,
+                name: `${config.name}-${interaction.user.username}`,
+                type: ChannelType.GuildText,
+                permissionOverwrites,
             });
-        } catch (err) {
-            Logger.error(`[Ticket Close Error] ${err}`);
+
             await InteractionUtils.safeReply(
                 interaction,
-                "❌ Failed to close ticket channel. Check permissions."
+                `✅ Ticket created successfully in ${channel}`
             );
+
+            await channel.send({
+                content: `${interaction.user} welcome`,
+                embeds: [Created()],
+                components: [row(["close", "manage"])],
+            });
+
+            Logger.success(`Ticket channel created: ${channel.id} by ${interaction.user.id}`);
+
+            await sendTicketLog(
+                guild,
+                config.logChannels?.open,
+                `📩 Ticket opened by ${interaction.user.tag} — ${channel}`
+            );
+
+            const result = { channelId: channel.id, success: true };
+
+            if (!result) return;
+
+            await this.dbService.create(result.channelId, interaction.user.id, data.id!);
+
+            Logger.debug(messages.debug.created);
+        } catch (err) {
+            Logger.error("[Ticket.create]", err);
+            await InteractionUtils.safeReply(interaction, messages.error.failedCreateTicket);
         }
     }
-
-    delete(channelId: string) {
-
-    }
-
-    update(channelId: string) {
-
-    }
-
-    add() { }
-
-    rename() { }
 }

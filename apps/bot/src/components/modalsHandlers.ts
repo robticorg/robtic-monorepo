@@ -2,11 +2,16 @@ import { Events, Interaction } from "discord.js";
 import { Ticket } from "./_class/ticket";
 import { InteractionUtils } from "@/lib/interactionUtils";
 import { FormService, TicketService } from "@robo/db";
+import { Logger } from "@robo/logger";
 
 interface valueProps {
     label: string;
     value: string;
 }
+
+const ticket = new Ticket(new TicketService());
+const ticketData = new TicketService();
+const formData = new FormService();
 
 export default {
     name: Events.InteractionCreate,
@@ -14,41 +19,48 @@ export default {
         if (!interaction.isModalSubmit()) return;
         await InteractionUtils.safeDefer(interaction);
 
-        const ticketData = new TicketService();
-        const formData = new FormService();
-
-        const found = await formData.find(interaction.customId);
-        if (!found)
-            return await InteractionUtils.safeReply(
-                interaction,
-                "❌ Error: Unknown form submitted.",
-            );
-
-        const dataFound = await ticketData.panelFind(found.ticketPanels.find(tp => tp.formId === found.id)?.id!);
-        if (!dataFound)
-            return await InteractionUtils.safeReply(
-                interaction,
-                "❌ Error: Missing ticket data for this form.",
-            );
-
-        const values: valueProps[] = [];
-        for (const qId of found.questions.map(q => q.id)) {
-            const questionFound = found.questions.find(e => e.id === qId);
-            if (!questionFound)
-                return await InteractionUtils.safeReply(
+        try {
+            const found = await formData.find(interaction.customId);
+            if (!found) {
+                return InteractionUtils.safeReply(
                     interaction,
-                    "❌ Error: One or more form questions are invalid.",
+                    "❌ Error: Unknown form submitted.",
                 );
+            }
 
-            values.push({
-                label: questionFound.name,
-                value: interaction.fields.getTextInputValue(questionFound.id),
-            });
+            const matchingPanel = found.ticketPanels.find(tp => tp.formId === found.id);
+            if (!matchingPanel) {
+                return InteractionUtils.safeReply(
+                    interaction,
+                    "❌ Error: Missing ticket data for this form.",
+                );
+            }
+
+            const dataFound = await ticketData.panelFind(matchingPanel.id);
+            if (!dataFound) {
+                return InteractionUtils.safeReply(
+                    interaction,
+                    "❌ Error: Missing ticket data for this form.",
+                );
+            }
+
+            const values: valueProps[] = [];
+            for (const question of found.questions) {
+                values.push({
+                    label: question.name,
+                    value: interaction.fields.getTextInputValue(question.id),
+                });
+            }
+
+            await ticket.create(interaction, dataFound);
+
+            Logger.debug(`[ModalHandler] Form submitted with ${values.length} answers`);
+        } catch (err) {
+            Logger.error("[ModalHandler]", err);
+            await InteractionUtils.safeReply(
+                interaction,
+                "❌ Failed to process this form. Please try again.",
+            );
         }
-
-        const ticket = new Ticket();
-        await ticket.create(interaction, dataFound);
-
-        console.log(values);
     },
 };

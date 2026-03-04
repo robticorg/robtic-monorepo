@@ -8,15 +8,19 @@
     "paths": {
       "@/*": ["src/*"],
       "utiles/*": ["src/utiles/*"],
-      "lib/*": ["src/lib/*"]
+      "lib/*": ["src/lib/*"],
+      "@robo/logger": ["../../libs/logger/src/index.ts"],
+      "@robo/config": ["../../libs/config/src/env.ts"],
+      "@robo/db": ["../../libs/database/src/db.ts"],
+      "@robo/shared": ["../../libs/shared/src/main.ts"]
     }
   },
   "include": ["src", "tests"],
   "exclude": ["dist"],
   "references": [
-    { "path": "../../packages/shared" },
-    { "path": "../../packages/config" },
-    { "path": "../../packages/database" },
-    { "path": "../../packages/logger" }
+    { "path": "../../libs/shared" },
+    { "path": "../../libs/config" },
+    { "path": "../../libs/database" },
+    { "path": "../../libs/logger" }
   ]
 }

@@ -12,17 +12,24 @@ export default {
         
         await prisma.formData.create({
             data: {
-                id: "test-form",
-                name: "Test Form",
+                id: "test-fomr-2",
+                name: "Mounir",
                 questions: {
                     create: [
                         {
-                            id: "question-1",
+                            id: "ques-1",
                             name: "What is your favorite color?",
                             style: "SHORT",
                             required: true,
                             placeholder: "e.g., Blue"
-                        }
+                        },
+                        {
+                            id: "ques-2",
+                            name: "fdsfdsfds",
+                            style: "PARAGRAPH",
+                            required: false,
+                            placeholder: "e.g., Blue"
+                        },
                     ]
                 }
             }
@@ -31,12 +38,12 @@ export default {
         await prisma.ticketPanel.create({
             data: {
                 panelId: "test",
-                name: "test form",
-                style: "1",
+                name: "test form 2",
+                style: "2",
                 hasForm: true,
-                formId: "test-form",
+                formId: "test-fomr-2",
                 channels: {
-                    category: "1440798954693329017"
+                    category: "1445469073315201148"
                 }
             }
         });

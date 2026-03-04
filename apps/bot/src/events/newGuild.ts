@@ -1,12 +1,16 @@
-import { Events, Interaction } from "discord.js";
-import { GuildService } from "@robo/db"
+import { Events, Guild } from "discord.js";
+import { GuildService, PermissionService, DefaultPermissions } from "@robo/db";
+import { Logger } from "@robo/logger";
 
 export default {
-    name : Events.GuildCreate,
-    run: async (interaction : Interaction) => {
-        const guild = new GuildService();
+    name: Events.GuildCreate,
+    run: async (guild: Guild) => {
+        const guildService = new GuildService();
+        const permService = new PermissionService();
 
-        console.log(interaction.id)
-        await guild.ensureGuild(interaction.id);
-    }
-}
+        Logger.info(`📥 Joined guild: ${guild.name} (${guild.id})`);
+
+        await guildService.ensureGuild(guild.id);
+        await permService.seedDefaults(guild.id, DefaultPermissions);
+    },
+};
