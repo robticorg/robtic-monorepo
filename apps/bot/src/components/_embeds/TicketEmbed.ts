@@ -1,4 +1,4 @@
-import { EmbedBuilder } from "discord.js";
+import { ButtonStyle, ContainerBuilder, EmbedBuilder, UserSelectMenuBuilder } from "discord.js";
 
 export function Created(data?: any) {
     return new EmbedBuilder()
@@ -31,3 +31,29 @@ export function Managed() {
             iconURL: "https://raw.githubusercontent.com/robo159/assets/main/images/robo.jpg"
         });
 }
+
+
+export const exampleContainer = new ContainerBuilder()
+	.setAccentColor(0x0099ff)
+	.addTextDisplayComponents((textDisplay) =>
+		textDisplay.setContent(
+			'This text is inside a Text Display component! You can use **any __markdown__** available inside this component too.',
+		),
+	)
+	.addActionRowComponents((actionRow) =>
+		actionRow.setComponents(new UserSelectMenuBuilder().setCustomId('exampleSelect').setPlaceholder('Select users')),
+	)
+	.addSeparatorComponents((separator) => separator)
+	.addSectionComponents((section) =>
+		section
+			.addTextDisplayComponents(
+				(textDisplay) =>
+					textDisplay.setContent(
+						'This text is inside a Text Display component! You can use **any __markdown__** available inside this component too.',
+					),
+				(textDisplay) => textDisplay.setContent('And you can place one button or one thumbnail component next to it!'),
+			)
+			.setButtonAccessory((button) =>
+				button.setCustomId('exampleButton').setLabel('Button inside a Section').setStyle(ButtonStyle.Primary),
+			),
+	);  

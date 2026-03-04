@@ -1,5 +1,5 @@
 import client from "@/lib/Client";
-import env from "@robo/config/env";
+import env from "@robo/config";
 import { REST, Routes } from "discord.js";
 import { Loader } from "@/utils/loader";
 import { Logger } from "@robo/logger";
