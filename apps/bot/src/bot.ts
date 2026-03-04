@@ -5,7 +5,7 @@ import { initLogger, Logger } from "@robo/logger";
 import env from "@robo/config";
 
 import { Collection } from "discord.js";
-import { CommandType } from "@robo/shared";
+import type { CommandType } from "@/types";
 
 client.commands = new Collection<string, CommandType>();
 
