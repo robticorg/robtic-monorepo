@@ -7,8 +7,7 @@
   "scripts": {
     "build": "tsc -p .",
     "dev": "bun run src/examples/use-logger.ts",
-    "lint": "eslint . --ext .ts",
-    "prepare": "bun run build"
+    "lint": "eslint . --ext .ts"
   },
   "dependencies": {
     "@types/fs-extra": "^11.0.4",
