@@ -5,7 +5,7 @@ import { ticketBy } from "@robo/shared";
 
 type TicketUpdateData = Parameters<typeof prisma.ticket.update>[0]['data'];
 
-export class TicketService {
+export class TicketRepository {
     async create(id: string, userId: string, panelId: string) {
         await prisma.ticket.create({
             data: {

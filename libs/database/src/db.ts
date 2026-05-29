@@ -7,14 +7,14 @@ const prisma =
     }).$extends(withAccelerate())
 
 // --- Services Exports ---
-import { GuildService } from "./services/guild.service";
-import { TicketService } from "./services/ticket.service";
-import { PanelService } from "./services/panel.service";
-import { FormService } from "./services/form.service";
-import { PermissionService } from "./services/permission.service";
+import { GuildService } from "./services/guild.repository";
+import { TicketRepository } from "./services/ticket.repository";
+import { PanelService } from "./services/panel.repository";
+import { FormService } from "./services/form.repository";
+import { PermissionService } from "./services/permission.repository";
 
 // --- Types Export ---
-import { Guild, TicketPanel, Ticket, Panel, FormData, Permission } from "../generated/prisma";
+import { Guild, TicketPanel, Ticket, Panel, FormData, Question, Permission } from "../generated/prisma";
 
 // --- Default Export ---
 import {DefaultPermissions} from "./default/persmession"
@@ -22,7 +22,7 @@ import {DefaultPermissions} from "./default/persmession"
 // --- Main Exports ---
 export {
     GuildService,
-    TicketService,
+    TicketRepository,
     PanelService,
     FormService,
     PermissionService,
@@ -32,6 +32,7 @@ export {
     type Ticket,
     type Panel,
     type FormData,
+    type Question,
     type Permission,
     prisma
 };

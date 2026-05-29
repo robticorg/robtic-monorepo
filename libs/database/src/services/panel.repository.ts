@@ -1,8 +1,8 @@
-import { prisma, TicketService } from "@robo/db";
+import { prisma, TicketRepository } from "@robo/db";
 import { DefaultEmbed } from "../default/embed";
 import { Logger } from "@robo/logger";
 
-const ticket = new TicketService();
+const ticket = new TicketRepository();
 
 export class PanelService {
     async create(guildId: string, name: string) {
