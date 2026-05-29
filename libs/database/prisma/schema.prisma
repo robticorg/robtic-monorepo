@@ -18,6 +18,11 @@ enum PanelType {
 enum TicketStatus {
   OPEN
   CLOSED
+  OPENING
+  CLOSING 
+  SAVED 
+  FAILED_CLOSE 
+  FAILED_OPEN
 }
 
 // ── Guild ──────────────────────────────────────────────
