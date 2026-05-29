@@ -9,6 +9,10 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@robo/config": "workspace:*",
+    "@robo/db": "workspace:*",
+    "@robo/logger": "workspace:*",
+    "@robo/shared": "workspace:*",
     "discord.js": "^14.25.1",
     "dotenv": "^17.2.3",
     "mongodb": "^6.20.0",

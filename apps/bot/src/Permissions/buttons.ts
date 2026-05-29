@@ -1,5 +1,5 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
-import { TicketPermissions, TicketPermission } from ".";
+import { TicketPermissions, type TicketPermission } from "./permissions";
 
 export type ButtonType = "close" | "claim" | "transcript" | "reopen" | "manage" | "delete" | "add" | "remove" | "rename" | "transfer";
 

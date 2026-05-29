@@ -3,7 +3,8 @@
   "compilerOptions": {
     "composite": true,
     "rootDir": "src",
-    "outDir": "dist"
+    "outDir": "dist",
+    "declarationDir": "dist"
   },
   "include": [
     "src"
@@ -12,7 +13,6 @@
     "dist"
   ],
   "references": [
-    { "path": "../shared" },
-    { "path": "../database"}
+    { "path": "../shared" }
   ]
 }

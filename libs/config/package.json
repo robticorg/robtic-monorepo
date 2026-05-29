@@ -2,7 +2,15 @@
     "name": "@robo/config",
     "type": "module",
     "scripts": {
-        "build": "bun build ./src/*.ts --outdir ./dist --target node"
+        "build": "bun run build:js && bun run build:types",
+        "build:js": "bun build ./src/env.ts ./src/database.ts --outdir ./dist --target bun --format esm --external @robo/logger",
+        "build:types": "tsc -p tsconfig.json --emitDeclarationOnly",
+        "dev": "bun run build:js --watch"
+    },
+    "dependencies": {
+        "@robo/logger": "workspace:*",
+        "dotenv": "^17.2.3",
+        "mongoose": "^8.19.1"
     },
     "devDependencies": {
         "@types/bun": "latest",
@@ -12,16 +20,19 @@
     "main": "dist/env.js",
     "exports": {
         ".": {
+            "types": "./dist/env.d.ts",
             "import": "./dist/env.js",
-            "require": "./dist/env.js"
+            "default": "./dist/env.js"
         },
         "./env": {
+            "types": "./dist/env.d.ts",
             "import": "./dist/env.js",
-            "require": "./dist/env.js"
+            "default": "./dist/env.js"
         },
         "./database": {
+            "types": "./dist/database.d.ts",
             "import": "./dist/database.js",
-            "require": "./dist/database.js"
+            "default": "./dist/database.js"
         }
     }
 }

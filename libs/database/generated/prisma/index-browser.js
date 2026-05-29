@@ -21,12 +21,12 @@ exports.Prisma = Prisma
 exports.$Enums = {}
 
 /**
- * Prisma Client JS version: 6.19.0
- * Query Engine version: 2ba551f319ab1df4bc874a89965d8b3641056773
+ * Prisma Client JS version: 6.19.3
+ * Query Engine version: c2990dca591cba766e3b7ef5d9e8a84796e47ab7
  */
 Prisma.prismaVersion = {
-  client: "6.19.0",
-  engine: "2ba551f319ab1df4bc874a89965d8b3641056773"
+  client: "6.19.3",
+  engine: "c2990dca591cba766e3b7ef5d9e8a84796e47ab7"
 }
 
 Prisma.PrismaClientKnownRequestError = () => {
@@ -239,7 +239,12 @@ exports.PanelType = exports.$Enums.PanelType = {
 
 exports.TicketStatus = exports.$Enums.TicketStatus = {
   OPEN: 'OPEN',
-  CLOSED: 'CLOSED'
+  CLOSED: 'CLOSED',
+  OPENING: 'OPENING',
+  CLOSING: 'CLOSING',
+  SAVED: 'SAVED',
+  FAILED_CLOSE: 'FAILED_CLOSE',
+  FAILED_OPEN: 'FAILED_OPEN'
 };
 
 exports.Prisma.ModelName = {

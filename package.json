@@ -7,37 +7,39 @@
     "type": "module",
     "scripts": {
         "build": "bun run build:libs && bun run build:apps",
-        "build:apps": "bun run --filter './apps/*' build",
-        "build:libs": "bun run --filter './libs/*' build",
+        "build:apps": "bun run --filter @robo/bot build && bun run --filter @robo/api build && bun run --filter @robo/dashboard build",
+        "build:libs": "bun run build:shared && bun run build:logger && bun run build:config && bun run build:db",
         "build:config": "bun run --filter @robo/config build",
         "build:logger": "bun run --filter @robo/logger build",
         "build:shared": "bun run --filter @robo/shared build",
-        "build:db": "bun run --filter @robo/db generate",
+        "build:db": "bun run --filter @robo/db build",
         "build:dash": "bun run --filter @robo/dashboard build",
 
         "dev": "bun run --filter './apps/*' dev",
         "dev:bot": "bun run --filter @robo/bot dev",
+        "dev:libs": "bun run --filter './libs/*' dev",
         "dev:logger": "bun run --filter @robo/logger dev",
         "dev:db": "bun run --filter @robo/db studio",
         "dev:dash": "bun run --filter @robo/dashboard dev",
-        
+
         "create:db": "bun run --filter @robo/db migrate",
         "import:db": "bun run --filter @robo/db seed",
 
         "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
         "lint:logger": "bun run --filter @robo/logger lint",
+        
         "test": "bun run --filter './**' test",
-        "typecheck": "tsc -b tsconfig.build.json"
+        "typecheck": "tsc -b tsconfig.build.json --pretty false",
+        "validate:deps": "bun install --frozen-lockfile"
     },
     "devDependencies": {
-        "@types/bun": "latest"
-    },
-    "peerDependencies": {
-        "typescript": "^5.0.0"
+        "@types/bun": "latest",
+        "@types/node": "^25.9.1",
+        "typescript": "^5.7.3"
     },
     "dependencies": {
         "@napi-rs/canvas": "^0.1.82",
-        "chalk": "^5.6.2",
+        "chalk": "^4.1.2",
         "dotenv": "^17.2.3"
     }
 }

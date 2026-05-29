@@ -73,7 +73,12 @@ export type PanelType = (typeof PanelType)[keyof typeof PanelType]
 
 export const TicketStatus: {
   OPEN: 'OPEN',
-  CLOSED: 'CLOSED'
+  CLOSED: 'CLOSED',
+  OPENING: 'OPENING',
+  CLOSING: 'CLOSING',
+  SAVED: 'SAVED',
+  FAILED_CLOSE: 'FAILED_CLOSE',
+  FAILED_OPEN: 'FAILED_OPEN'
 };
 
 export type TicketStatus = (typeof TicketStatus)[keyof typeof TicketStatus]
@@ -353,8 +358,8 @@ export namespace Prisma {
   export import Exact = $Public.Exact
 
   /**
-   * Prisma Client JS version: 6.19.0
-   * Query Engine version: 2ba551f319ab1df4bc874a89965d8b3641056773
+   * Prisma Client JS version: 6.19.3
+   * Query Engine version: c2990dca591cba766e3b7ef5d9e8a84796e47ab7
    */
   export type PrismaVersion = {
     client: string

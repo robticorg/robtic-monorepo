@@ -1,24 +1,10 @@
-/**
- * Seed script — creates test data for a single guild.
- *
- * Usage:
- *   bun run prisma/seed.ts
- *   (or)  bunx prisma db seed
- */
-
 import { PrismaClient, PanelType, TicketStatus } from "../generated/prisma";
 
 const prisma = new PrismaClient();
 
-// ─── Config ────────────────────────────────────────────
 const GUILD_ID = "1304497912541216819";
-const TEST_ROLE_ID = "1312415192617058425";  // Fake "Staff" role ID for testing
+const TEST_ROLE_ID = "1312415192617058425";
 
-/**
- * Default permission rows – one per action.
- * `permissions` = Discord permission flag names (strings).
- * `roleIds`     = Discord role IDs that bypass the permission check.
- */
 const DEFAULT_PERMISSIONS: { action: string; permissions: string[]; roleIds: string[] }[] = [
     { action: "close",      permissions: ["ManageChannels"],  roleIds: [TEST_ROLE_ID] },
     { action: "reopen",     permissions: ["ManageChannels"],  roleIds: [TEST_ROLE_ID] },
@@ -32,12 +18,9 @@ const DEFAULT_PERMISSIONS: { action: string; permissions: string[]; roleIds: str
     { action: "transfer",   permissions: ["ManageChannels"],  roleIds: [TEST_ROLE_ID] },
 ];
 
-// ─── Main ──────────────────────────────────────────────
-
 async function main() {
     console.log("🌱 Seeding database…\n");
 
-    // 1. Guild
     const guild = await prisma.guild.upsert({
         where: { id: GUILD_ID },
         update: {},
@@ -52,7 +35,6 @@ async function main() {
     });
     console.log(`  ✔ Guild: ${guild.id}`);
 
-    // 2. Permissions
     for (const perm of DEFAULT_PERMISSIONS) {
         await prisma.permission.upsert({
             where: { guildId_action: { guildId: GUILD_ID, action: perm.action } },
@@ -67,7 +49,6 @@ async function main() {
     }
     console.log(`  ✔ Permissions: ${DEFAULT_PERMISSIONS.length} actions`);
 
-    // 3. Panel
     const panel = await prisma.panel.upsert({
         where: { id: "seed-panel-1" },
         update: {},
@@ -85,7 +66,6 @@ async function main() {
     });
     console.log(`  ✔ Panel: ${panel.id} (${panel.name})`);
 
-    // 4. Ticket Panel (button inside the panel)
     const ticketPanel = await prisma.ticketPanel.upsert({
         where: { id: "seed-tp-1" },
         update: {},
@@ -104,7 +84,6 @@ async function main() {
     });
     console.log(`  ✔ Ticket Panel: ${ticketPanel.id} (${ticketPanel.name})`);
 
-    // 5. Form (optional, attached to the ticket panel)
     const form = await prisma.formData.upsert({
         where: { id: "seed-form-1" },
         update: {},
@@ -128,20 +107,18 @@ async function main() {
     });
     console.log(`  ✔ Form: ${form.id} (${form.name})`);
 
-    // Link form to ticket panel
     await prisma.ticketPanel.update({
         where: { id: ticketPanel.id },
         data: { formId: form.id, hasForm: true },
     });
     console.log(`  ✔ Form linked to Ticket Panel`);
 
-    // 6. Sample ticket (OPEN)
     const ticket = await prisma.ticket.upsert({
         where: { id: "seed-ticket-channel-1" },
         update: {},
         create: {
             id: "seed-ticket-channel-1",
-            userId: "123456789012345678", // Fake user ID
+            userId: "123456789012345678",
             panelId: ticketPanel.id,
             status: TicketStatus.OPEN,
             embed: {

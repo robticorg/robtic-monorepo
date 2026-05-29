@@ -1,29 +1,28 @@
-import client from "lib/Client";
+import path from "path";
 
+import client from "@/lib/Client";
 import { Loader } from "@/utils/loader";
 
-const handler = new Loader("src");
+const loader = new Loader("src");
 
-handler.load("events", async (filePath) => {
-    const event = (await import(filePath)).default;
+await loader.scan(async (filePath) => {
+    const isEventFile =
+        filePath.endsWith(".event.ts") ||
+        filePath.endsWith(".event.js");
 
-    if (event.name && event.run) {
-        if (event.once) {
-            client.once(event.name, (...args) => event.run(...args));
-        } else {
-            client.on(event.name, (...args) => event.run(...args));
-        }
-    } else {
+    if (!isEventFile) return;
+
+    const event = (await import(path.resolve(filePath))).default;
+
+    if (!event?.name || !event?.run) {
         throw new Error(`Event at ${filePath} is missing required properties.`);
     }
-}, "EVENT");
 
-handler.load("components", async (filePath) => {
-    const event = (await import(filePath)).default;
+    const execute = (...args: unknown[]) => event.run(...args);
 
-    if (event.name && event.run) {
-        client.on(event.name, (...args) => event.run(...args));
+    if (event.once) {
+        client.once(event.name, execute);
     } else {
-        throw new Error(`Event at ${filePath} is missing required properties.`);
+        client.on(event.name, execute);
     }
 }, "EVENT");
