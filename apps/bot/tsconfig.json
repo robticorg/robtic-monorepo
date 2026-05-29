@@ -4,15 +4,10 @@
     "composite": true,
     "rootDir": "src",
     "outDir": "dist",
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"],
-      "utiles/*": ["src/utiles/*"],
-      "lib/*": ["src/lib/*"],
-      "@robo/logger": ["../../libs/logger/src/index.ts"],
-      "@robo/config": ["../../libs/config/src/env.ts"],
-      "@robo/db": ["../../libs/database/src/db.ts"],
-      "@robo/shared": ["../../libs/shared/src/main.ts"]
+      "@/*": ["./src/*"],
+      "utiles/*": ["./src/utiles/*"],
+      "lib/*": ["./src/lib/*"]
     }
   },
   "include": ["src", "tests"],

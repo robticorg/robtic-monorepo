@@ -3,8 +3,12 @@
     "type": "module",
     "module": "dist/main.js",
     "main": "dist/main.js",
+    "types": "dist/main.d.ts",
     "scripts": {
-        "build": "bun build ./src/*.ts --outdir ./dist --target node"
+        "build": "bun run build:js && bun run build:types",
+        "build:js": "bun build ./src/main.ts --outdir ./dist --target bun --format esm",
+        "build:types": "tsc -p tsconfig.json --emitDeclarationOnly",
+        "dev": "bun run build:js --watch"
     },
     "devDependencies": {
         "@types/bun": "latest",
@@ -12,8 +16,9 @@
     },
     "exports": {
         ".": {
-            "import": "./src/main.ts",
-            "require": "./src/main.ts"
+            "types": "./dist/main.d.ts",
+            "import": "./dist/main.js",
+            "default": "./dist/main.js"
         }
     }
 }

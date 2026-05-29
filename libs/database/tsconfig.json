@@ -2,8 +2,14 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "composite": true,
+    "types": ["node"],
     "rootDir": "src",
-    "outDir": "dist"
+    "outDir": "dist",
+    "declarationDir": "dist",
+    "paths": {
+      "@robo/db": ["./src/db.ts"],
+      "@robo/db/db": ["./src/db.ts"]
+    }
   },
   "include": [
     "src"

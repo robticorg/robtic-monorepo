@@ -1,3 +1,11 @@
 {
-    "extends": "./tsconfig.json"
+    "files": [],
+    "references": [
+        { "path": "libs/shared" },
+        { "path": "libs/logger" },
+        { "path": "libs/config" },
+        { "path": "libs/database" },
+        { "path": "apps/bot" },
+        { "path": "apps/api" }
+    ]
 }
