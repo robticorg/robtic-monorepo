@@ -1,10 +1,10 @@
 import { Events, Interaction, PermissionsBitField, TextChannel, GuildMember } from "discord.js";
-import { TicketService, PermissionService } from "@robo/db";
+import { TicketRepository, PermissionService } from "@robo/db";
 import { InteractionUtils } from "@/lib/interactionUtils";
 import { Logger } from "@robo/logger";
 import { TicketRoles, Buttons, ButtonType } from "@/Permissions";
 
-const dbService = new TicketService();
+const dbService = new TicketRepository();
 const permService = new PermissionService();
 
 async function hasPermission(
@@ -57,7 +57,6 @@ export default {
         const action = TicketRoles[interaction.customId as ButtonType];
         if (!action) return;
 
-        // Permission Check
         if (interaction.channel instanceof TextChannel) {
             const member = interaction.guild?.members.cache.get(interaction.user.id);
             if (!member) return;

@@ -1,16 +1,24 @@
 import { Events, Interaction } from "discord.js";
-import { Ticket } from "./_class/ticket";
 import { InteractionUtils } from "@/lib/interactionUtils";
-import { FormService, TicketService } from "@robo/db";
+import { FormService, TicketRepository } from "@robo/db";
 import { Logger } from "@robo/logger";
+import { TicketServices } from "..";
+import { TicketAuditService } from "../TicketAuditService";
+import { TicketDiscordAdapter } from "../TicketDiscordAdapter";
+import { TicketStateMachine } from "../TicketState";
 
 interface valueProps {
     label: string;
     value: string;
 }
 
-const ticket = new Ticket(new TicketService());
-const ticketData = new TicketService();
+const ticketRepo = new TicketRepository();
+const ticket = new TicketServices(
+    ticketRepo, 
+    new TicketStateMachine, 
+    new TicketAuditService, 
+    new TicketDiscordAdapter 
+);
 const formData = new FormService();
 
 export default {
@@ -36,7 +44,7 @@ export default {
                 );
             }
 
-            const dataFound = await ticketData.panelFind(matchingPanel.id);
+            const dataFound = await ticketRepo.panelFind(matchingPanel.id);
             if (!dataFound) {
                 return InteractionUtils.safeReply(
                     interaction,

@@ -1,13 +1,18 @@
 import { Events, Interaction } from "discord.js";
-import { FormService, TicketService } from "@robo/db";
-import { Ticket, Modal } from "@/components/_class";
+import { FormService, TicketRepository } from "@robo/db";
 import { InteractionUtils } from "@/lib/interactionUtils";
 import TicektAccess from "@/utils/interaction/ticektAccess";
 import { Logger } from "@robo/logger";
+import { TicketAuditService, TicketDiscordAdapter, TicketServices, TicketStateMachine } from "..";
+import { createModal } from "../TicketModalCreate";
 
-const ticket = new Ticket(new TicketService());
-const modal = new Modal();
-const ticketData = new TicketService();
+const ticketRepo = new TicketRepository();
+const ticket = new TicketServices(
+    ticketRepo, 
+    new TicketStateMachine, 
+    new TicketAuditService, 
+    new TicketDiscordAdapter 
+);
 const formData = new FormService();
 
 export default {
@@ -27,7 +32,7 @@ export default {
                 ? interaction.customId.replace("ticket_", "")
                 : interaction.values[0];
 
-            const found = await ticketData.panelFind(ticketId);
+            const found = await ticketRepo.panelFind(ticketId);
             if (!found) return;
 
             if (await TicektAccess(interaction, found.id)) {
@@ -39,7 +44,7 @@ export default {
             if (found.hasForm && found.formId) {
                 const formFound = await formData.find(found.formId);
                 if (formFound) {
-                    return modal.create(interaction, formFound);
+                    return createModal(interaction, found)
                 }
             }
 

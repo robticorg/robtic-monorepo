@@ -1,9 +1,9 @@
 import { Interaction } from "discord.js";
-import { TicketService } from "@robo/db";
+import { TicketRepository } from "@robo/db";
 import { InteractionUtils } from "@/lib/interactionUtils";
 import { TicketActionServices } from "@/Permissions/roles";
 
-export const transferTicket = async (
+export const removeMember = async (
     interaction: Interaction,
     channelId: string | undefined,
     services: TicketActionServices

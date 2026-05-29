@@ -1,4 +1,4 @@
-import { TicketService } from "@robo/db";
+import { TicketRepository } from "@robo/db";
 import { Interaction } from "discord.js";
 
 export default async function TicketAccess(
@@ -6,7 +6,7 @@ export default async function TicketAccess(
     panelId: string
 ): Promise<boolean> {
 
-    const ticket = new TicketService();
+    const ticket = new TicketRepository();
 
     const existing = await ticket.findUserTicketInPanel(interaction.user.id, panelId);
 

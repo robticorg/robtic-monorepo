@@ -10,10 +10,10 @@ import type { CommandType } from "@/types";
 client.commands = new Collection<string, CommandType>();
 
 import "@/handlers/events.handler";
-import { LoadCommands, registeCommands } from "./handlers/commands.handler";
+import { loadCommands, registerCommands } from "./handlers/commands.handler";
 
-await LoadCommands();
-await registeCommands();
+await loadCommands();
+await registerCommands();
 
 initLogger({
     level: "debug",

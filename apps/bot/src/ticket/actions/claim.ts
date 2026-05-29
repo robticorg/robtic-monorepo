@@ -1,13 +1,11 @@
 import { Interaction, TextChannel } from "discord.js";
-import { TicketService } from "@robo/db";
 import { InteractionUtils } from "@/lib/interactionUtils";
 import { messages } from "@/lib/messages";
 import { Logger } from "@robo/logger";
 import { channelProps } from "@robo/shared";
-import { sendTicketLog } from "@/utils/ticketLogger";
 import { TicketActionServices } from "@/Permissions/roles";
 
-export const deleteTicket = async (
+export const claimTicket = async (
     interaction: Interaction,
     channelId: string | undefined,
     services: TicketActionServices
@@ -23,32 +21,33 @@ export const deleteTicket = async (
              return;
         }
 
+        if (found.claimer) {
+            return InteractionUtils.safeReply(
+                interaction,
+                `This ticket is already claimed by <@${found.claimer}>.`,
+            );
+        }
+
         const channelData = (found.panel as any)?.channels as channelProps;
         const guild = interaction.guild;
         if (!guild) return;
 
         const channel = guild.channels.cache.get(channelId);
-        if (!channel) {
-             await InteractionUtils.safeReply(interaction, messages.error.ticketNotFound);
+        if (!channel || !(channel instanceof TextChannel)) {
              return;
         }
 
-        const channelName = channel.name;
-        // The deletion happens here
-        await channel.delete("Ticket deleted");
-        
-        Logger.success(`Ticket deleted: ${channelId} (${channelName})`);
+        if (channel.isSendable()) {
+            await channel.send(`📝 This ticket has been claimed by ${interaction.user}.`);
+        }
 
-        await sendTicketLog(
-            guild,
-            channelData?.logs?.delete,
-            `🗑️ Ticket \`${channelName}\` deleted by ${interaction.user.tag}`
-        );
+        Logger.success(`Ticket ${channelId} claimed by ${interaction.user.id}`);
 
-        await services.db.delete(found.id);
+        await services.db.update(found.id, { claimer: interaction.user.id });
+        await InteractionUtils.safeReply(interaction, "📝 You have claimed this ticket.");
 
     } catch (err) {
-        Logger.error("[Ticket.delete]", err);
-        await InteractionUtils.safeReply(interaction, messages.error.failedDeleteTicket);
+        Logger.error("[Ticket.claim]", err);
+        await InteractionUtils.safeReply(interaction, messages.error.main);
     }
 };

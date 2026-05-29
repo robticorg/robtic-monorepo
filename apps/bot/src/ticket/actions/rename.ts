@@ -1,5 +1,5 @@
 import { Interaction } from "discord.js";
-import { TicketService } from "@robo/db";
+import { TicketRepository } from "@robo/db";
 import { InteractionUtils } from "@/lib/interactionUtils";
 import { TicketActionServices } from "@/Permissions/roles";
 

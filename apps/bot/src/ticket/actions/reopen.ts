@@ -1,13 +1,12 @@
 import { Interaction, TextChannel } from "discord.js";
-import { TicketService } from "@robo/db";
+import { TicketRepository } from "@robo/db";
 import { InteractionUtils } from "@/lib/interactionUtils";
 import { messages } from "@/lib/messages";
 import { Logger } from "@robo/logger";
 import { channelProps } from "@robo/shared";
-import { sendTicketLog } from "@/utils/ticketLogger";
 import { TicketActionServices } from "@/Permissions/roles";
 
-export const claimTicket = async (
+export const reopenTicket = async (
     interaction: Interaction,
     channelId: string | undefined,
     services: TicketActionServices
@@ -23,11 +22,8 @@ export const claimTicket = async (
              return;
         }
 
-        if (found.claimer) {
-            return InteractionUtils.safeReply(
-                interaction,
-                `This ticket is already claimed by <@${found.claimer}>.`,
-            );
+        if (found.status === "OPEN") {
+            return InteractionUtils.safeReply(interaction, messages.warn.opened);
         }
 
         const channelData = (found.panel as any)?.channels as channelProps;
@@ -36,26 +32,30 @@ export const claimTicket = async (
 
         const channel = guild.channels.cache.get(channelId);
         if (!channel || !(channel instanceof TextChannel)) {
+             await InteractionUtils.safeReply(interaction, messages.error.ticketNotFound);
              return;
         }
 
+        // Restore permission for the ticket owner
+        const ticketOwnerId = found.userId;
+        if (ticketOwnerId) {
+            await channel.permissionOverwrites.edit(ticketOwnerId, {
+                ViewChannel: true,
+                SendMessages: true,
+            });
+        }
+        
+        await InteractionUtils.safeReply(interaction, messages.success.opened);
+        Logger.success(`Ticket reopened: ${channelId} by ${interaction.user.id}`);
+
+        await services.db.update(found.id, { status: "OPEN" });
+
         if (channel.isSendable()) {
-            await channel.send(`📝 This ticket has been claimed by ${interaction.user}.`);
+            await channel.send("🔓 This ticket has been reopened.");
         }
 
-        Logger.success(`Ticket ${channelId} claimed by ${interaction.user.id}`);
-
-        await sendTicketLog(
-            guild,
-            channelData?.logs?.claim,
-            `📝 Ticket <#${channelId}> claimed by ${interaction.user.tag}`
-        );
-
-        await services.db.update(found.id, { claimer: interaction.user.id });
-        await InteractionUtils.safeReply(interaction, "📝 You have claimed this ticket.");
-
     } catch (err) {
-        Logger.error("[Ticket.claim]", err);
+        Logger.error("[Ticket.reopen]", err);
         await InteractionUtils.safeReply(interaction, messages.error.main);
     }
 };

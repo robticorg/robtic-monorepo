@@ -1,7 +1,5 @@
 import { Interaction } from "discord.js";
-import { TicketService } from "@robo/db";
-import { InteractionUtils } from "@/lib/interactionUtils";
-import { Managed } from "@/components/_embeds/TicketEmbed"; 
+import { Managed } from "@/ticket/TicketEmbed"; 
 import { row } from "@/Permissions/buttons";
 import { TicketActionServices } from "@/Permissions/roles";
 

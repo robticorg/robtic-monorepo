@@ -1,10 +1,10 @@
 import { Events, Channel } from "discord.js";
-import { TicketService } from "@robo/db";
+import { TicketRepository } from "@robo/db";
 
 export default {
     name: Events.ChannelDelete,
     run: async (channel: Channel) => {
-        const ticket = new TicketService();
+        const ticket = new TicketRepository();
 
         if (!channel.isTextBased()) return;
 

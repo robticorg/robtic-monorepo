@@ -7,7 +7,6 @@ import {
     ButtonStyle,
     StringSelectMenuBuilder,
     StringSelectMenuOptionBuilder,
-    MessageFlags,
 } from "discord.js";
 import { PanelService, TicketPanel, type Panel } from "@robo/db";
 import { InteractionUtils } from "@/lib/interactionUtils";
