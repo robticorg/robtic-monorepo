@@ -1,6 +1,6 @@
 export type AccessType = "user" | "admin" | "support" | "claimedUser" | "everyone";
 
-export type TicketStatus = "open" | "closed" | "pending";
+export type TicketStatus = "OPEN" | "CLOSED" | "OPENING" | "CLOSING" | "SAVED" | "FAILED_CLOSE" | "FAILED_OPEN";
 
 export type ticketBy = "channel" | "user";
 
