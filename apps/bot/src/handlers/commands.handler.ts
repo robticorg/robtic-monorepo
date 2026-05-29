@@ -1,40 +1,66 @@
+import path from "path";
+
 import client from "@/lib/Client";
+
 import env from "@robo/config";
-import { REST, Routes } from "discord.js";
-import { Loader } from "@/utils/loader";
 import { Logger } from "@robo/logger";
 
-const handler = new Loader("src");
+import { REST, Routes } from "discord.js";
 
-export async function LoadCommands() {
-    await handler.load("commands", async (filePath) => {
-        const command = (await import(filePath)).default;
+import { Loader } from "@/utils/loader";
 
-        if ('data' in command && 'run' in command) {
-            client.commands.set(command.data.name, command);
-        } else {
-            throw new Error(`The command at ${filePath} is missing a required "data" or "run" property.`);
+const loader = new Loader("src");
+
+export async function loadCommands() {
+    await loader.scan(async (filePath) => {
+        const isCommandFile =
+            filePath.endsWith(".command.ts") ||
+            filePath.endsWith(".command.js");
+
+        if (!isCommandFile) return;
+
+        const command = (await import(path.resolve(filePath))).default;
+
+        if (!command?.data || !command?.run) {
+            throw new Error(
+                `The command at ${filePath} is missing required properties.`
+            );
         }
+
+        client.commands.set(command.data.name, command);
     }, "COMMAND");
 }
 
-export async function registeCommands() {
-    const rest = new REST({ version: '9' }).setToken(env.token.value!);
+export async function registerCommands() {
+    const rest = new REST({ version: "10" }).setToken(
+        env.token.value!
+    );
 
-    (async () => {
-        try {
-            Logger.debug(`Started refreshing ${client.commands.size} application (/) commands.`);
+    try {
+        Logger.debug(
+            `Started refreshing ${client.commands.size} application (/) commands.`
+        );
 
-            const data: any = await rest.put(
-                process.env.NODE_ENV === "dev" ?
-                    Routes.applicationGuildCommands(env.clientId.value!, env.guildId.value!) :
-                    Routes.applicationCommands(env.clientId.value!),
-                { body: client.commands.map(cmd => cmd.data.toJSON()) }
-            );
+        const route =
+            process.env.NODE_ENV === "dev"
+                ? Routes.applicationGuildCommands(
+                      env.clientId.value!,
+                      env.guildId.value!
+                  )
+                : Routes.applicationCommands(
+                      env.clientId.value!
+                  );
 
-            Logger.debug(`Successfully reloaded ${data.length} application (/) commands.`)
-        } catch (err: unknown) {
-            Logger.error(err as string);
-        };
-    })();
+        const data = (await rest.put(route, {
+            body: client.commands.map((cmd) =>
+                cmd.data.toJSON()
+            ),
+        })) as [];
+
+        Logger.debug(
+            `Successfully reloaded ${data.length} application (/) commands.`
+        );
+    } catch (error) {
+        Logger.error(String(error));
+    }
 }
