@@ -5,6 +5,7 @@ import { Logger } from "@robo/logger";
 import { SettingsRepository, TicketRepository, TranscriptRepository, type TranscriptMessageDoc } from "@robo/db";
 import { resolvePlaces, t, TRANSCRIPT_FORMAT, type TicketTranscriptDocument, type TranscriptMessageView, type TranscriptUser } from "@robo/shared";
 import { exportFilename, transcriptHtml } from "@robo/transcript/html";
+import { keepPictures } from "./r2";
 
 // A ticket's transcript: every captured message folded into one self-contained document (Credora's archive builder,
 // adapted to tickets), saved under an unguessable id, then sent where the server wants it: the transcript channel, the
@@ -132,6 +133,8 @@ export async function archiveTicket(guild: Guild, channelId: string, { post }: {
     const id = ticket.transcriptId ?? newTranscriptId();
     const doc = await buildDocument(guild, channelId, id);
     if (!doc) return null;
+    // Discord's attachment links expire: keep the pictures in R2 and point the transcript there.
+    await keepPictures(doc, guild.id);
     const owner = doc.users[ticket.ownerId];
     const claimer = ticket.claimerId ? doc.users[ticket.claimerId] : null;
     await transcripts.save({
