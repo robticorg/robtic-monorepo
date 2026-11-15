@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { defaultCommands, defaultTicketControls, missingArabic, newButton, newInfoItem, newPanel, newQuestion, normalizeTicketSettings, newTicketOption, newTicketPanel, overwriteBits, t, validateTicketPanel } from "@robo/shared";
+import { defaultCommands, defaultTicketControls, missingArabic, newButton, newInfoBlock, newInfoItem, newPanel, newQuestion, normalizeTicketSettings, newTicketOption, newTicketPanel, overwriteBits, t, validateTicketPanel } from "@robo/shared";
 import { mentionedId, parseCommand } from "../src/handlers/message.hendler";
 import { emojiOf, renderMessage } from "../src/lib/messagePayload";
 import { controlRows } from "../src/Permissions/buttons";
@@ -81,7 +81,7 @@ describe("ticket controls", () => {
         expect(ids).toContain("tk:c:close");
         expect(ids).not.toContain("tk:c:rename");
         expect(ids).not.toContain("tk:c:transfer");
-        for (const a of ["reopen", "transcript", "delete"] as const) c.items[a].placement = "menu";
+        for (const a of ["reopen", "transcript", "delete"] as const) c.items[a].closedPlacement = "menu";
         const [row] = controlRows(c, true);
         const menu = row!.components[0] as { custom_id: string; options: { value: string }[] };
         expect(menu.custom_id).toBe("tk:cm");
@@ -134,17 +134,33 @@ describe("round 2", () => {
         expect(buttons).toContain("tk:c:claim");
         expect(buttons).not.toContain("tk:c:close");
     });
-    test("info buttons sit among the open controls (not the closed ones) and on panels", () => {
+    test("the closed message places its controls apart: Transcript in its menu, still a button when open", () => {
         const c = defaultTicketControls();
-        c.info = [{ ...newInfoItem("Rules", "button", "ip1"), id: "n1" }, { ...newInfoItem("FAQ", "menu", "ip2"), id: "n2" }, newInfoItem("No panel", "button", null)];
-        const rows = controlRows(c, false);
-        const ids = rows.flatMap((r) => r.components.map((b) => b.custom_id));
+        c.items.transcript.closedPlacement = "menu";
+        const closedIds = controlRows(c, true).flatMap((r) => r.components.map((b) => b.custom_id));
+        expect(closedIds).not.toContain("tk:c:transcript");
+        expect(closedIds).toContain("tk:cm");
+        expect(controlRows(c, false).flatMap((r) => r.components.map((b) => b.custom_id))).toContain("tk:c:transcript");
+    });
+    test("an info block renders as its own buttons or menu in a Components message", () => {
+        const m = { ...newTicketPanel("P").message, format: "components" as const };
+        m.blocks = [...m.blocks, { ...newInfoBlock("ip1", "Rules"), id: "v1", items: [{ ...newInfoItem("ip1", "Rules"), id: "n1" }] }];
+        const ids = JSON.stringify(renderMessage(m, {}, []).components);
         expect(ids).toContain("tk:v:ip1:n1");
-        const menu = rows[rows.length - 1]!.components[0] as { options: { value: string }[] };
-        expect(menu.options.map((o) => o.value)).toEqual(["v:ip2:n2"]);
-        expect(controlRows(c, true).flatMap((r) => r.components.map((b) => b.custom_id)).some((x) => String(x).startsWith("tk:v:"))).toBe(false);
+        m.blocks = m.blocks.map((b) => (b.type === "info" ? { ...b, display: "menu" as const } : b));
+        const json = JSON.stringify(renderMessage(m, {}, []).components);
+        expect(json).toContain("tk:vm:v1");
+        expect(json).toContain("v:ip1:n1");
         expect(infoPanelOf("v:ip2:n2")).toBe("ip2");
         expect(infoPanelOf("close")).toBe(null);
+    });
+    test("first-version info buttons move into an info block; old closed display becomes closedPlacement", () => {
+        const old = newTicketPanel("Old");
+        const raw = { panels: [{ ...old, info: [{ id: "n1", label: "FAQ", panelId: "ip1", placement: "button" }], options: [{ ...old.options[0], controls: { closedDisplay: "menu", items: {} } }] }] };
+        const s = normalizeTicketSettings(raw);
+        expect(s.panels[0]!.message.blocks.some((b) => b.type === "info")).toBe(true);
+        expect(s.panels[0]!.options[0]!.controls.items.transcript.closedPlacement).toBe("menu");
+        expect(s.panels[0]!.options[0]!.controls.items.transcript.placement).toBe("button");
     });
     test("an old panel shown as a menu keeps its options in the menu; a missing info panel is a dashboard error", () => {
         const old = newTicketPanel("Old");
@@ -152,7 +168,7 @@ describe("round 2", () => {
         expect(s.panels[0]!.options[0]!.placement).toBe("menu");
         expect(s.infoPanels).toEqual([]);
         const p = newTicketPanel("New");
-        p.info = [newInfoItem("Info", "button", null)];
+        p.message = { ...p.message, format: "components", blocks: [...p.message.blocks, { ...newInfoBlock(""), items: [newInfoItem("")] }] };
         expect(validateTicketPanel(p).join(" ")).toContain("choose the info panel");
     });
     test("an info panel renders with its own buttons, only for the member", async () => {

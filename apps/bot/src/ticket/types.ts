@@ -22,7 +22,9 @@ export const IDS = {
     confirm: (action: TicketAction) => `tk:y:${action}`,
     /** An info button (on a panel or among a ticket's controls): shows that info panel. The item id keeps ids unique. */
     info: (infoPanelId: string, itemId: string) => `tk:v:${infoPanelId}:${itemId}`,
-    /** An info button placed in a menu: the picked value. */
+    /** An info block shown as a menu: its custom id; the picked value is IDS.infoValue. */
+    infoMenu: (blockId: string) => `tk:vm:${blockId}`,
+    /** An info entry in a menu: the picked value. */
     infoValue: (infoPanelId: string, itemId: string) => `v:${infoPanelId}:${itemId}`,
     /** A button or menu inside an info panel. */
     infoItem: (panelId: string, itemId: string) => `tk:x:${panelId}:${itemId}`,
