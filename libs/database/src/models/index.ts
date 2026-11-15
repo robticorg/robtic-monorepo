@@ -13,6 +13,7 @@ const ticketSettingsSchema = new Schema(
         panels: { type: Mixed, default: () => [] },
         come: { type: Mixed, default: null },
         commands: { type: Mixed, default: null },
+        infoPanels: { type: Mixed, default: () => [] },
         updatedBy: { type: String, default: null },
     },
     { timestamps: true, minimize: false },

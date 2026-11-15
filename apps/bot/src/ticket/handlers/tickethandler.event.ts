@@ -6,11 +6,13 @@ import { fromInteraction } from "@/lib/invocation";
 import { ticketService } from "..";
 import { ACTIONS, runControl } from "../actions";
 import { questionsModal } from "../TicketModalCreate";
-import { IDS } from "../types";
+import { infoPanelClick, showInfoPanel } from "../infoPanels";
+import { IDS, infoPanelOf } from "../types";
 import { isTicketId } from "../utils";
 
 // Every Robtic Ticket button and menu: a panel's options (open a ticket, after its form when it has one), a ticket's
-// controls (as buttons or a menu), and "Yes" on an "are you sure?".
+// controls, info buttons (show an info panel to whoever pressed) and what's inside info panels, and "Yes" on an "are
+// you sure?". Options, controls and info buttons can each be a button or an entry in the message's menu.
 
 const settings = new SettingsRepository();
 const isAction = (v: string): v is TicketAction => (TICKET_ACTIONS as readonly string[]).includes(v);
@@ -39,9 +41,13 @@ export default {
         try {
             const [, kind, a, b] = id.split(":");
             if (interaction.isButton() && kind === "o" && a && b) return await openFromPanel(interaction, a, b);
+            if (interaction.isButton() && kind === "v" && a) return await showInfoPanel(interaction, a);
+            if (kind === "x" && a && b) return await infoPanelClick(interaction, a, b);
             if (interaction.isStringSelectMenu() && kind === "m" && a) {
-                const optionId = interaction.values[0];
-                if (optionId) await openFromPanel(interaction, a, optionId);
+                const value = interaction.values[0];
+                const info = value ? infoPanelOf(value) : null;
+                if (info) return await showInfoPanel(interaction, info);
+                if (value) await openFromPanel(interaction, a, value);
                 return;
             }
             if (interaction.isButton() && kind === "c" && a && isAction(a)) return await runControl(a, fromInteraction(interaction), ACTIONS);
@@ -49,6 +55,8 @@ export default {
             if (interaction.isButton() && kind === "y" && a && isAction(a)) return await runControl(a, fromInteraction(interaction, { confirmed: true }), ACTIONS);
             if (interaction.isStringSelectMenu() && id === IDS.controlMenu) {
                 const action = interaction.values[0];
+                const info = action ? infoPanelOf(action) : null;
+                if (info) return await showInfoPanel(interaction, info);
                 if (action && isAction(action)) await runControl(action, fromInteraction(interaction), ACTIONS);
                 return;
             }

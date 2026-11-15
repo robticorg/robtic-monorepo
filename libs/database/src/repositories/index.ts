@@ -30,7 +30,9 @@ export class SettingsRepository {
 
     /** Where a panel was posted, written back so the dashboard shows it and "Update" edits it in place. */
     async setPosted(guildId: string, panelId: string, posted: TicketPanel['posted']) {
-        await TicketSettingsModel.updateOne({ guildId, 'panels.id': panelId }, { $set: { 'panels.$.posted': posted } });
+        const r = await TicketSettingsModel.updateOne({ guildId, 'panels.id': panelId }, { $set: { 'panels.$.posted': posted } });
+        // Not a ticket panel: an info panel posted in a channel of its own.
+        if (!r.matchedCount) await TicketSettingsModel.updateOne({ guildId, 'infoPanels.id': panelId }, { $set: { 'infoPanels.$.posted': posted } });
         this.forget(guildId);
     }
 

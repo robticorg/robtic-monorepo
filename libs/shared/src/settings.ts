@@ -1,13 +1,109 @@
-// ---- copied from robtic-discord libs/shared/src/ticket.ts (the dashboard's contract). Change both together. ----
-// Only this header differs: the few dashboard types the contract leans on are copied in here.
+// ---- copied from robtic-discord libs/shared/src/ticket.ts and panels.ts (the dashboard's contract). Change both together. ----
+// Only this header differs: the dashboard types the contract leans on are copied in here.
 
 export type Snowflake = string;
 
-/** Discord's limits the panels respect (docs.discord.com: Components, Embeds). */
-export const PANEL_LIMITS = { text: 4000, embedTitle: 256, embedDescription: 4096, embedFields: 25, fieldName: 256, fieldValue: 1024, footer: 2048 } as const;
+/** The bot's look in a server (the dashboard saves it to Discord directly; the bot never reads it). */
+export interface BotProfile { nickname: string | null; avatarUrl: string | null; bannerUrl: string | null; bio: string | null }
+export const defaultProfile = (): BotProfile => ({ nickname: null, avatarUrl: null, bannerUrl: null, bio: null });
+export const validateProfile = (_p: BotProfile): string[] => [];
 
-let seq = 0;
-export const panelId = (p: string) => `${p}${Date.now().toString(36)}${(seq++).toString(36)}`;
+/* ================================================================== panels.ts */
+
+// Panels a server builds on the dashboard and the bot posts: either a Components V2 message (containers, text,
+// sections, galleries, separators, buttons and menus, exactly the blocks Discord offers) or a classic embed with rows of
+// buttons or a menu. Every button and menu option does one thing when clicked: reply with a message, give or take a
+// role, or open a link; and can be limited to some roles. Limits are Discord's (docs.discord.com → Components).
+
+export const PANEL_LIMITS = {
+    /** Discord: "Messages allow up to 40 total components." */
+    components: 40,
+    /** Total text across Text Displays in one message. */
+    text: 4000,
+    sectionTexts: 3,
+    galleryItems: 10,
+    rowButtons: 5,
+    selectOptions: 25,
+    buttonLabel: 80,
+    optionLabel: 100,
+    optionDescription: 100,
+    placeholder: 150,
+    mediaDescription: 1024,
+    /** Classic messages: up to 5 action rows. */
+    embedRows: 5,
+    embedTitle: 256,
+    embedDescription: 4096,
+    embedFields: 25,
+    fieldName: 256,
+    fieldValue: 1024,
+    footer: 2048,
+    embedTotal: 6000,
+    replyText: 2000,
+    panels: 25,
+} as const;
+
+export type ButtonStyleName = 'primary' | 'secondary' | 'success' | 'danger' | 'link';
+export const BUTTON_STYLES: readonly (readonly [ButtonStyleName, string])[] = [
+    ['primary', 'Blurple'], ['secondary', 'Grey'], ['success', 'Green'], ['danger', 'Red'], ['link', 'Link'],
+];
+
+/** What clicking does. A link button opens its URL and nothing else (Discord sends no interaction for links). */
+export interface PanelAction {
+    /** 'panel': shows another of the server's panels to the clicker only (a menu that opens sub-pages). */
+    kind: 'reply' | 'role' | 'panel' | 'none';
+    /** kind 'reply': the message the clicker sees (only them). */
+    reply: string;
+    /** kind 'role': the role given, or taken if they already have it. */
+    roleId: string | null;
+    /** kind 'panel': the panel shown. */
+    panelId?: string | null;
+}
+
+export interface PanelButton {
+    id: string;
+    label: string;
+    emoji: string;
+    style: ButtonStyleName;
+    /** Only for style 'link'. */
+    url: string;
+    action: PanelAction;
+    /** Only these roles may use it (empty = everyone). */
+    allowedRoleIds: string[];
+}
+
+export interface PanelOption {
+    id: string;
+    label: string;
+    description: string;
+    emoji: string;
+    action: PanelAction;
+    allowedRoleIds: string[];
+}
+
+export interface PanelSelect {
+    id: string;
+    placeholder: string;
+    options: PanelOption[];
+}
+
+export interface MediaItem { url: string; description: string; spoiler: boolean }
+
+export type PanelBlock =
+    | { id: string; type: 'text'; content: string }
+    | { id: string; type: 'section'; texts: string[]; accessory: { kind: 'thumbnail'; media: MediaItem } | { kind: 'button'; button: PanelButton } }
+    | { id: string; type: 'gallery'; items: MediaItem[] }
+    | { id: string; type: 'separator'; divider: boolean; spacing: 1 | 2 }
+    | { id: string; type: 'buttons'; buttons: PanelButton[] }
+    | { id: string; type: 'select'; select: PanelSelect }
+    | { id: string; type: 'container'; accent: string | null; spoiler: boolean; children: PanelBlock[] }
+    /** Robtic Music's controls (its buttons or its menu), only on the music panel: placed anywhere, never removed. */
+    | { id: string; type: 'music' };
+
+export type PanelRow =
+    | { id: string; type: 'buttons'; buttons: PanelButton[] }
+    | { id: string; type: 'select'; select: PanelSelect }
+    /** Robtic Music's controls under an embed (music panel only). */
+    | { id: string; type: 'music' };
 
 export interface PanelEmbed {
     color: string | null;
@@ -21,17 +117,204 @@ export interface PanelEmbed {
     footer: string;
 }
 
-/** The bot's look in a server (the dashboard saves it to Discord directly; the bot never reads it). */
-export interface BotProfile { nickname: string | null; avatarUrl: string | null; bannerUrl: string | null; bio: string | null }
-export const defaultProfile = (): BotProfile => ({ nickname: null, avatarUrl: null, bannerUrl: null, bio: null });
-export const validateProfile = (_p: BotProfile): string[] => [];
+export interface Panel {
+    id: string;
+    name: string;
+    format: 'components' | 'embed';
+    channelId: string | null;
+    /** Components V2 message. */
+    blocks: PanelBlock[];
+    /** Classic message. */
+    embed: PanelEmbed;
+    rows: PanelRow[];
+    /** Where it was last posted, so "Update" edits that message. */
+    posted: { channelId: string; messageId: string; at: string } | null;
+}
+
+/* ------------------------------------------------------------------ factories */
+
+let seq = 0;
+export const panelId = (p: string) => `${p}${Date.now().toString(36)}${(seq++).toString(36)}`;
+export const noAction = (): PanelAction => ({ kind: 'none', reply: '', roleId: null });
+export const newButton = (label = 'Button'): PanelButton => ({ id: panelId('b'), label, emoji: '', style: 'primary', url: '', action: noAction(), allowedRoleIds: [] });
+export const newOption = (label = 'Option'): PanelOption => ({ id: panelId('o'), label, description: '', emoji: '', action: noAction(), allowedRoleIds: [] });
+export const newSelect = (): PanelSelect => ({ id: panelId('s'), placeholder: 'Choose an option', options: [newOption('Option 1')] });
+export const newMedia = (): MediaItem => ({ url: '', description: '', spoiler: false });
+
+export const BLOCK_KINDS = [
+    ['container', 'Container', 'A card with an accent colour that holds other blocks.'],
+    ['text', 'Text', 'Markdown text: headings, lists, links, mentions.'],
+    ['section', 'Section', 'Up to 3 lines of text with a thumbnail or a button beside them.'],
+    ['gallery', 'Image gallery', '1 to 10 images or GIFs.'],
+    ['separator', 'Separator', 'A divider line or a gap.'],
+    ['buttons', 'Buttons', 'A row of up to 5 buttons.'],
+    ['select', 'Menu', 'A dropdown with up to 25 options.'],
+] as const;
+export type BlockKind = (typeof BLOCK_KINDS)[number][0];
+
+export function newBlock(kind: BlockKind): PanelBlock {
+    const id = panelId('k');
+    switch (kind) {
+        case 'container': return { id, type: 'container', accent: '#1793ff', spoiler: false, children: [{ id: panelId('k'), type: 'text', content: '## Title\nWrite something here.' }] };
+        case 'text': return { id, type: 'text', content: 'Write something here.' };
+        case 'section': return { id, type: 'section', texts: ['**Title**', 'A line about it.'], accessory: { kind: 'thumbnail', media: newMedia() } };
+        case 'gallery': return { id, type: 'gallery', items: [newMedia()] };
+        case 'separator': return { id, type: 'separator', divider: true, spacing: 1 };
+        case 'buttons': return { id, type: 'buttons', buttons: [newButton('Button')] };
+        case 'select': return { id, type: 'select', select: newSelect() };
+    }
+}
+
+export const emptyEmbed = (): PanelEmbed => ({ color: '#1793ff', author: '', title: 'Title', url: '', description: 'Write something here.', fields: [], thumbnail: '', image: '', footer: '' });
+
+export function newPanel(name = 'New panel'): Panel {
+    return {
+        id: panelId('p'),
+        name,
+        format: 'components',
+        channelId: null,
+        blocks: [newBlock('container')],
+        embed: emptyEmbed(),
+        rows: [],
+        posted: null,
+    };
+}
+
+/* ------------------------------------------------------------------ counting and checking against Discord's limits */
+
+/** How many components Discord counts for these blocks (every block, its children, buttons and accessories). `music`: what the music controls count. */
+export function countComponents(blocks: readonly PanelBlock[], music = 0): number {
+    let n = 0;
+    for (const b of blocks) {
+        switch (b.type) {
+            case 'text': case 'gallery': case 'separator': n += 1; break;
+            case 'section': n += 1 + b.texts.filter((t) => t.trim()).length + 1; break;
+            case 'buttons': n += 1 + b.buttons.length; break;
+            case 'select': n += 2; break;
+            case 'container': n += 1 + countComponents(b.children, music); break;
+            case 'music': n += music; break;
+        }
+    }
+    return n;
+}
+
+/** Total characters across the message's Text Displays (sections included). */
+export function countText(blocks: readonly PanelBlock[]): number {
+    let n = 0;
+    for (const b of blocks) {
+        if (b.type === 'text') n += b.content.length;
+        else if (b.type === 'section') n += b.texts.join('').length;
+        else if (b.type === 'container') n += countText(b.children);
+    }
+    return n;
+}
+
+const isUrl = (v: string) => /^https:\/\/\S+$/i.test(v);
+const isImage = (v: string) => isUrl(v) || /^data:image\/(png|jpeg|webp|gif);base64,/.test(v);
+
+function checkAction(where: string, a: PanelAction, errors: string[]) {
+    if (a.kind === 'reply' && !a.reply.trim()) errors.push(`${where}: write the reply it sends.`);
+    if (a.kind === 'reply' && a.reply.length > PANEL_LIMITS.replyText) errors.push(`${where}: the reply can be up to ${PANEL_LIMITS.replyText} characters.`);
+    if (a.kind === 'role' && !a.roleId) errors.push(`${where}: choose the role it gives.`);
+    if (a.kind === 'panel' && !a.panelId) errors.push(`${where}: choose the panel it shows.`);
+}
+
+function checkButton(b: PanelButton, errors: string[]) {
+    const where = `Button “${b.label || b.emoji || '…'}”`;
+    if (!b.label.trim() && !b.emoji.trim()) errors.push(`${where} needs a label or an emoji.`);
+    if (b.label.length > PANEL_LIMITS.buttonLabel) errors.push(`${where}: labels are up to ${PANEL_LIMITS.buttonLabel} characters.`);
+    if (b.style === 'link') { if (!isUrl(b.url) || b.url.length > 512) errors.push(`${where} needs an https:// link.`); }
+    else checkAction(where, b.action, errors);
+}
+
+function checkSelect(s: PanelSelect, errors: string[]) {
+    if (s.options.length < 1 || s.options.length > PANEL_LIMITS.selectOptions) errors.push(`A menu needs 1 to ${PANEL_LIMITS.selectOptions} options.`);
+    if (s.placeholder.length > PANEL_LIMITS.placeholder) errors.push(`A menu’s placeholder is up to ${PANEL_LIMITS.placeholder} characters.`);
+    for (const o of s.options) {
+        if (!o.label.trim() || o.label.length > PANEL_LIMITS.optionLabel) errors.push(`Menu options need a label (up to ${PANEL_LIMITS.optionLabel} characters).`);
+        if (o.description.length > PANEL_LIMITS.optionDescription) errors.push(`“${o.label}”: descriptions are up to ${PANEL_LIMITS.optionDescription} characters.`);
+        checkAction(`Option “${o.label}”`, o.action, errors);
+    }
+}
+
+function checkBlocks(blocks: readonly PanelBlock[], errors: string[], inContainer: boolean, music: boolean) {
+    for (const b of blocks) {
+        switch (b.type) {
+            case 'text': if (!b.content.trim()) errors.push('A text block is empty.'); break;
+            case 'section':
+                if (b.texts.filter((t) => t.trim()).length < 1 || b.texts.length > PANEL_LIMITS.sectionTexts) errors.push(`A section needs 1 to ${PANEL_LIMITS.sectionTexts} lines of text.`);
+                if (b.accessory.kind === 'thumbnail' && !isImage(b.accessory.media.url)) errors.push('A section’s thumbnail needs an image.');
+                if (b.accessory.kind === 'button') checkButton(b.accessory.button, errors);
+                break;
+            case 'gallery':
+                if (b.items.length < 1 || b.items.length > PANEL_LIMITS.galleryItems) errors.push(`A gallery holds 1 to ${PANEL_LIMITS.galleryItems} images.`);
+                if (b.items.some((i) => !isImage(i.url))) errors.push('Every gallery item needs an image.');
+                break;
+            case 'buttons':
+                if (b.buttons.length < 1 || b.buttons.length > PANEL_LIMITS.rowButtons) errors.push(`A button row holds 1 to ${PANEL_LIMITS.rowButtons} buttons.`);
+                b.buttons.forEach((x) => checkButton(x, errors));
+                break;
+            case 'select': checkSelect(b.select, errors); break;
+            case 'container':
+                if (inContainer) errors.push('A container can’t hold another container.');
+                if (b.children.length === 0) errors.push('A container is empty.');
+                checkBlocks(b.children, errors, true, music);
+                break;
+            case 'music':
+                if (!music) errors.push('Music controls only work on the Robtic Music panel.');
+                break;
+        }
+    }
+}
+
+/**
+ * Checks a panel against Discord's limits. `music`: it's Robtic Music's panel, whose controls count this many
+ * components (System's panels can't hold music controls).
+ */
+export function validatePanel(p: Panel, music?: { components: number }): string[] {
+    const errors: string[] = [];
+    if (!music && (!p.name.trim() || p.name.length > 60)) errors.push('Give the panel a name (up to 60 characters).');
+    if (p.format === 'components') {
+        if (p.blocks.length === 0) errors.push('Add at least one block.');
+        const c = countComponents(p.blocks, music?.components ?? 0);
+        if (c > PANEL_LIMITS.components) errors.push(`This panel uses ${c} components; Discord allows ${PANEL_LIMITS.components}.`);
+        const t = countText(p.blocks);
+        if (t > PANEL_LIMITS.text) errors.push(`This panel has ${t.toLocaleString('en')} characters of text; Discord allows ${PANEL_LIMITS.text.toLocaleString('en')}.`);
+        checkBlocks(p.blocks, errors, false, !!music);
+    } else {
+        const e = p.embed;
+        const total = e.title.length + e.description.length + e.author.length + e.footer.length + e.fields.reduce((s, f) => s + f.name.length + f.value.length, 0);
+        if (!e.title.trim() && !e.description.trim() && e.fields.length === 0 && !e.image) errors.push('The embed is empty.');
+        if (e.title.length > PANEL_LIMITS.embedTitle) errors.push(`The title is up to ${PANEL_LIMITS.embedTitle} characters.`);
+        if (e.description.length > PANEL_LIMITS.embedDescription) errors.push(`The description is up to ${PANEL_LIMITS.embedDescription.toLocaleString('en')} characters.`);
+        if (e.fields.length > PANEL_LIMITS.embedFields) errors.push(`An embed has up to ${PANEL_LIMITS.embedFields} fields.`);
+        if (e.fields.some((f) => !f.name.trim() || !f.value.trim())) errors.push('Every field needs a name and a value.');
+        if (total > PANEL_LIMITS.embedTotal) errors.push(`An embed holds up to ${PANEL_LIMITS.embedTotal.toLocaleString('en')} characters in all.`);
+        if ((e.image && !isImage(e.image)) || (e.thumbnail && !isImage(e.thumbnail))) errors.push('Embed images need an https:// link or an upload.');
+        if (e.url && !isUrl(e.url)) errors.push('The title link must be https://.');
+        if (p.rows.length > PANEL_LIMITS.embedRows) errors.push(`A message has up to ${PANEL_LIMITS.embedRows} rows of buttons or menus.`);
+        for (const r of p.rows) {
+            if (r.type === 'music') { if (!music) errors.push('Music controls only work on the Robtic Music panel.'); continue; }
+            if (r.type === 'buttons') {
+                if (r.buttons.length < 1 || r.buttons.length > PANEL_LIMITS.rowButtons) errors.push(`A button row holds 1 to ${PANEL_LIMITS.rowButtons} buttons.`);
+                r.buttons.forEach((x) => checkButton(x, errors));
+            } else checkSelect(r.select, errors);
+        }
+    }
+    return [...new Set(errors)];
+}
+
+
+/* ================================================================== ticket.ts */
 
 
 // Robtic Ticket: ticket panels a server designs on the dashboard and the bot (Discord Bots/Public Ticket) runs. One
 // settings document per server holds everything: the panels (each a message with its ticket options as buttons or a
 // menu), and for every option what happens when a member opens it: the channel it makes, who sees it and what they may
 // do there, the message the bot posts inside it and that message's ticket controls (Close, Claim, Rename…), and the
-// message posted when it closes.
+// message posted when it closes. Info panels (the same builder as Robtic System's panels) are shown to whoever presses
+// an info button on a ticket panel or among a ticket's controls. Every option, control and info button is either a
+// button or an entry in the message's one menu (`placement`), so some can sit in a menu and the rest stay buttons.
 //
 // Channels and categories cascade: a ticket option's own choice wins, then its panel's, then the server's (Settings).
 //
@@ -78,6 +361,26 @@ export const TICKET_LIMITS = {
 export type TicketLanguage = 'en' | 'ar';
 export type TicketButtonStyle = 'primary' | 'secondary' | 'success' | 'danger';
 export const TICKET_BUTTON_STYLES: readonly (readonly [TicketButtonStyle, string])[] = [['primary', 'Blurple'], ['secondary', 'Grey'], ['success', 'Green'], ['danger', 'Red']];
+
+/** Where an option, control or info button sits: a button, or an entry in the message's one menu (under the buttons). */
+export type ItemPlacement = 'button' | 'menu';
+
+/** An info button: shows one of the server's info panels to whoever presses it (only them). */
+export interface TicketInfoItem {
+    id: string;
+    label: string;
+    emoji: string;
+    style: TicketButtonStyle;
+    /** In the menu: the small line under the label. */
+    description: string;
+    placement: ItemPlacement;
+    /** The info panel it shows (Info panels page). */
+    panelId: string | null;
+}
+
+export const newInfoItem = (label = 'Info', placement: ItemPlacement = 'button', panel: string | null = null): TicketInfoItem => ({
+    id: panelId('n'), label, emoji: 'ℹ️', style: 'secondary', description: '', placement, panelId: panel,
+});
 
 /* ------------------------------------------------------------------ a message the bot sends */
 
@@ -249,16 +552,18 @@ export interface TicketControlItem extends TicketWho {
     notice: string;
     /** Delete: seconds before the channel goes. */
     delay: number;
+    /** A button, or an entry in the controls menu. */
+    placement: ItemPlacement;
 }
 
 export interface TicketControls {
-    /** The open ticket's controls: buttons or one menu. */
-    display: 'buttons' | 'menu';
+    /** The open ticket's menu (controls and info buttons placed in the menu). */
     placeholder: string;
-    /** The closed message's controls. */
-    closedDisplay: 'buttons' | 'menu';
+    /** The closed message's menu. */
     closedPlaceholder: string;
     items: Record<TicketAction, TicketControlItem>;
+    /** Info buttons beside the open ticket's controls. */
+    info: TicketInfoItem[];
 }
 
 /** Which settings each control has, in its settings popup. */
@@ -345,6 +650,8 @@ export interface TicketOption extends TicketPlaces {
     style: TicketButtonStyle;
     /** Turned off: the option stays on the panel but answers that it's closed for now. */
     enabled: boolean;
+    /** A button, or an entry in the panel's menu. */
+    placement: ItemPlacement;
 
     /** The ticket channel's name: {number} {username} {option}. */
     channelName: string;
@@ -369,12 +676,13 @@ export interface TicketPanel extends TicketPlaces {
     /** Where the panel is posted. */
     channelId: Snowflake | null;
     message: MessageDesign;
-    /** The options as buttons, or as one menu. */
-    display: 'buttons' | 'menu';
+    /** The panel's menu (options and info buttons placed in the menu). */
     placeholder: string;
     /** Members with these roles can't open tickets here (added to the server's list). */
     blacklistRoleIds: Snowflake[];
     options: TicketOption[];
+    /** Info buttons beside the ticket options. */
+    info: TicketInfoItem[];
     posted: { channelId: Snowflake; messageId: Snowflake; at: string } | null;
 }
 
@@ -437,6 +745,8 @@ export interface TicketSettings {
     panels: TicketPanel[];
     come: TicketCome;
     commands: Record<TicketCommand, TicketCommandSetting>;
+    /** Panels shown by info buttons (or posted in a channel): Robtic System's panel builder. */
+    infoPanels: Panel[];
     /** The bot's look in this server (saved to Discord itself, not the bot's database). */
     profile: BotProfile;
 }
@@ -530,14 +840,13 @@ export const ticketEmbed = (over: Partial<PanelEmbed> = {}): PanelEmbed => ({
 });
 
 const item = (label: string, emoji: string, style: TicketButtonStyle, who: TicketTarget[], description = '', more: Partial<TicketControlItem> = {}): TicketControlItem => ({
-    shown: true, label, emoji, style, description, who, roleIds: [], confirm: false, reason: false, notice: '', delay: 0, ...more,
+    shown: true, label, emoji, style, description, who, roleIds: [], confirm: false, reason: false, notice: '', delay: 0, placement: 'button', ...more,
 });
 
 export const defaultTicketControls = (): TicketControls => ({
-    display: 'buttons',
     placeholder: 'Ticket options',
-    closedDisplay: 'buttons',
     closedPlaceholder: 'Closed ticket options',
+    info: [],
     items: {
         close: item('Close', '🔒', 'danger', ['owner', 'claimer', 'support', 'manager'], 'Close this ticket', { confirm: true }),
         claim: item('Claim', '🙋', 'success', ['support', 'manager'], 'Take this ticket'),
@@ -641,6 +950,7 @@ export function newTicketOption(label = 'Support', emoji = '🎫'): TicketOption
         description: '',
         style: 'primary',
         enabled: true,
+        placement: 'button',
         ...noPlaces(),
         channelName: 'ticket-{number}',
         supportRoleIds: [],
@@ -670,10 +980,10 @@ export function newTicketPanel(name = 'Support'): TicketPanel {
                 { id: SLOT_ID, type: 'slot' },
             ],
         },
-        display: 'buttons',
         placeholder: 'What is your ticket about?',
         blacklistRoleIds: [],
         options: [newTicketOption('Support', '🎫')],
+        info: [],
         posted: null,
     };
 }
@@ -709,6 +1019,7 @@ export const defaultTicketSettings = (): TicketSettings => ({
     panels: [],
     come: defaultCome(),
     commands: defaultCommands(),
+    infoPanels: [],
     profile: defaultProfile(),
 });
 
@@ -735,19 +1046,35 @@ function normalizePermissions(x: unknown): TicketPermissions {
     return { open, closed: { targets: { ...cloneJson(open.targets), owner: shut, added: shut }, roles: cloneJson(open.roles) } };
 }
 
+const placementOf = (x: unknown, fallback: ItemPlacement): ItemPlacement => (x === 'menu' || x === 'button' ? x : fallback);
+
+function normalizeInfo(x: unknown, fallback: ItemPlacement): TicketInfoItem[] {
+    return arr(x).map((i) => {
+        const o = obj(i);
+        const d = newInfoItem();
+        return { ...d, ...(o as Partial<TicketInfoItem>), id: typeof o.id === 'string' ? o.id : d.id, placement: placementOf(o.placement, fallback), panelId: typeof o.panelId === 'string' ? o.panelId : null };
+    });
+}
+
 function normalizeControls(x: unknown, askReason: boolean): TicketControls {
     const c = obj(x);
     const d = defaultTicketControls();
     const items = obj(c.items);
-    const merged = Object.fromEntries(TICKET_ACTIONS.map((a) => [a, { ...d.items[a], ...obj(items[a]), roleIds: arr<string>(obj(items[a]).roleIds) }])) as Record<TicketAction, TicketControlItem>;
+    // Before placements: the whole open (or closed) set was buttons or a menu. Reopen and Delete only show when closed.
+    const openWas: ItemPlacement = c.display === 'menu' ? 'menu' : 'button';
+    const closedWas: ItemPlacement = c.closedDisplay === 'menu' ? 'menu' : 'button';
+    const merged = Object.fromEntries(TICKET_ACTIONS.map((a) => {
+        const it = obj(items[a]);
+        const was = a === 'reopen' || a === 'delete' ? closedWas : openWas;
+        return [a, { ...d.items[a], ...it, roleIds: arr<string>(it.roleIds), placement: placementOf(it.placement, was) }];
+    })) as Record<TicketAction, TicketControlItem>;
     if (askReason && !obj(items.close).hasOwnProperty('reason')) merged.close.reason = true;
     merged.close.shown = true;
     return {
-        display: c.display === 'menu' ? 'menu' : 'buttons',
         placeholder: typeof c.placeholder === 'string' ? c.placeholder : d.placeholder,
-        closedDisplay: c.closedDisplay === 'menu' ? 'menu' : 'buttons',
         closedPlaceholder: typeof c.closedPlaceholder === 'string' ? c.closedPlaceholder : d.closedPlaceholder,
         items: merged,
+        info: normalizeInfo(c.info, openWas),
     };
 }
 
@@ -768,12 +1095,13 @@ function normalizeQuestion(x: unknown): TicketQuestion {
     };
 }
 
-function normalizeOption(x: unknown, askReason: boolean): TicketOption {
+function normalizeOption(x: unknown, askReason: boolean, was: ItemPlacement): TicketOption {
     const o = obj(x);
     const d = newTicketOption(String(o.label ?? 'Support'));
     return {
         ...d,
         ...(o as Partial<TicketOption>),
+        placement: placementOf(o.placement, was),
         ...Object.fromEntries(PLACE_KEYS.map((k) => [k, (o[k] as string | null | undefined) ?? null])),
         supportRoleIds: arr(o.supportRoleIds),
         managerRoleIds: arr(o.managerRoleIds),
@@ -786,15 +1114,17 @@ function normalizeOption(x: unknown, askReason: boolean): TicketOption {
 }
 
 function normalizePanel(x: unknown, askReason: boolean): TicketPanel {
-    const p = obj(x);
+    const { display: _old, ...p } = obj(x);
+    // Before placements: every option was a button, or all were in one menu.
+    const was: ItemPlacement = _old === 'menu' ? 'menu' : 'button';
     return {
         ...(p as unknown as TicketPanel),
         channelId: (p.channelId as string | null | undefined) ?? null,
         ...Object.fromEntries(PLACE_KEYS.map((k) => [k, (p[k] as string | null | undefined) ?? null])),
-        display: p.display === 'menu' ? 'menu' : 'buttons',
         placeholder: typeof p.placeholder === 'string' ? p.placeholder : 'What is your ticket about?',
         blacklistRoleIds: arr(p.blacklistRoleIds),
-        options: arr(p.options).map((o) => normalizeOption(o, askReason)),
+        options: arr(p.options).map((o) => normalizeOption(o, askReason, was)),
+        info: normalizeInfo(p.info, was),
         posted: (p.posted as TicketPanel['posted'] | undefined) ?? null,
     };
 }
@@ -813,6 +1143,7 @@ export function normalizeTicketSettings(raw: unknown): TicketSettings {
         panels: arr(r.panels).map((p) => normalizePanel(p, askReason)),
         come: { ...d.come, ...(come as Partial<TicketCome>), roleIds: arr(come.roleIds), button: { ...d.come.button, ...obj(come.button) } },
         commands: Object.fromEntries(TICKET_COMMANDS.map((c) => [c, { enabled: obj(commands[c]).enabled !== false, aliases: arr<string>(obj(commands[c]).aliases) }])) as TicketSettings['commands'],
+        infoPanels: arr<Panel>(r.infoPanels),
         profile: { ...d.profile, ...(obj(r.profile) as Partial<BotProfile>) },
     };
 }
@@ -901,13 +1232,14 @@ export function panelFromTemplate(t: Pick<TicketTemplate, 'panel' | 'guildId' | 
         channelId: same ? p.channelId : null,
         blacklistRoleIds: same ? p.blacklistRoleIds : [],
         posted: null,
+        info: p.info.map((i) => ({ ...i, id: panelId('n'), panelId: same ? i.panelId : null })),
         options: p.options.map((o) => ({
             ...clearPlaces(o),
             id: panelId('o'),
             supportRoleIds: same ? o.supportRoleIds : [],
             managerRoleIds: same ? o.managerRoleIds : [],
             permissions: same ? o.permissions : { open: { ...o.permissions.open, roles: {} }, closed: { ...o.permissions.closed, roles: {} } },
-            controls: same ? o.controls : { ...o.controls, items: Object.fromEntries(TICKET_ACTIONS.map((a) => [a, { ...o.controls.items[a], roleIds: [] }])) as unknown as TicketControls['items'] },
+            controls: same ? o.controls : { ...o.controls, info: o.controls.info.map((i) => ({ ...i, panelId: null })), items: Object.fromEntries(TICKET_ACTIONS.map((a) => [a, { ...o.controls.items[a], roleIds: [] }])) as unknown as TicketControls['items'] },
         })),
     };
 }
@@ -948,11 +1280,35 @@ function questionErrors(q: TicketQuestion, name: string): string[] {
     return out;
 }
 
-export function validateTicketOption(o: TicketOption, display: 'buttons' | 'menu'): string[] {
+/** One message's buttons and menu: at most 25 buttons (20 when there's also a menu: 5 rows in all) and 25 menu entries. */
+function slotErrors(items: readonly { placement: ItemPlacement }[], where: string): string[] {
+    const menu = items.filter((i) => i.placement === 'menu').length;
+    const buttons = items.length - menu;
+    const maxButtons = menu ? 20 : 25;
+    const out: string[] = [];
+    if (buttons > maxButtons) out.push(`${where}: at most ${maxButtons} buttons${menu ? ' with a menu' : ''} (Discord allows 5 rows).`);
+    if (menu > TICKET_LIMITS.menuOptions) out.push(`${where}: at most ${TICKET_LIMITS.menuOptions} entries in the menu.`);
+    return out;
+}
+
+function infoErrors(items: readonly TicketInfoItem[], where: string): string[] {
+    const out: string[] = [];
+    for (const i of items) {
+        const name = `${where}, info button “${i.label || i.emoji || '…'}”`;
+        if (blank(i.label) && (i.placement === 'menu' || blank(i.emoji))) out.push(`${name}: give it a ${i.placement === 'menu' ? 'title' : 'label or emoji'}.`);
+        if (i.label.length > (i.placement === 'menu' ? TICKET_LIMITS.optionLabel : TICKET_LIMITS.label)) out.push(`${name}: the label is too long.`);
+        if (i.description.length > TICKET_LIMITS.description) out.push(`${name}: the description is over ${TICKET_LIMITS.description} characters.`);
+        if (!i.panelId) out.push(`${name}: choose the info panel it shows.`);
+    }
+    return out;
+}
+
+export function validateTicketOption(o: TicketOption): string[] {
     const name = `“${o.label || 'Option'}”`;
     const out: string[] = [];
-    if (blank(o.label) && (display === 'menu' || blank(o.emoji))) out.push(`An option needs a ${display === 'menu' ? 'title' : 'label or emoji'}.`);
-    if (o.label.length > (display === 'menu' ? TICKET_LIMITS.optionLabel : TICKET_LIMITS.label)) out.push(`${name}: the label is too long.`);
+    const menu = o.placement === 'menu';
+    if (blank(o.label) && (menu || blank(o.emoji))) out.push(`An option needs a ${menu ? 'title' : 'label or emoji'}.`);
+    if (o.label.length > (menu ? TICKET_LIMITS.optionLabel : TICKET_LIMITS.label)) out.push(`${name}: the label is too long.`);
     if (o.description.length > TICKET_LIMITS.description) out.push(`${name}: the description is over ${TICKET_LIMITS.description} characters.`);
     if (blank(o.channelName) || o.channelName.length > TICKET_LIMITS.channelName) out.push(`${name}: give its tickets a channel name (up to ${TICKET_LIMITS.channelName} characters).`);
     if (!Number.isInteger(o.perMember) || o.perMember < 0 || o.perMember > TICKET_LIMITS.perMember) out.push(`${name}: open tickets per member must be 0 to ${TICKET_LIMITS.perMember}.`);
@@ -965,6 +1321,8 @@ export function validateTicketOption(o: TicketOption, display: 'buttons' | 'menu
         if (it.notice.length > TICKET_LIMITS.notice) out.push(`${name}: the ${TICKET_ACTION_INFO[a].name} message is over ${TICKET_LIMITS.notice} characters.`);
         if (it.delay < 0 || it.delay > TICKET_LIMITS.deleteDelay) out.push(`${name}: Delete waits 0 to ${TICKET_LIMITS.deleteDelay} seconds.`);
     }
+    out.push(...infoErrors(o.controls.info, `${name} controls`));
+    out.push(...slotErrors([...OPEN_ACTIONS.filter((a) => o.controls.items[a].shown).map((a) => o.controls.items[a]), ...o.controls.info], `${name} controls`));
     out.push(...messageErrors(o.welcome, `${name} ticket message`));
     out.push(...messageErrors(o.closed, `${name} closed message`));
     return out;
@@ -974,11 +1332,11 @@ export function validateTicketPanel(p: TicketPanel): string[] {
     const out: string[] = [];
     if (blank(p.name)) out.push('Give the panel a name.');
     if (!p.options.length) out.push(`“${p.name}”: add at least one ticket option.`);
-    const max = p.display === 'menu' ? TICKET_LIMITS.menuOptions : TICKET_LIMITS.buttonOptions;
-    if (p.options.length > max) out.push(`“${p.name}”: at most ${max} options as ${p.display === 'menu' ? 'a menu' : 'buttons'}.`);
+    out.push(...slotErrors([...p.options, ...p.info], `“${p.name}”`));
     if (p.placeholder.length > TICKET_LIMITS.placeholder) out.push(`“${p.name}”: the menu placeholder is too long.`);
     out.push(...messageErrors(p.message, `“${p.name}”`));
-    for (const o of p.options) out.push(...validateTicketOption(o, p.display));
+    out.push(...infoErrors(p.info, `“${p.name}”`));
+    for (const o of p.options) out.push(...validateTicketOption(o));
     return out;
 }
 
@@ -1022,6 +1380,12 @@ export function validateTicketSection(section: TicketSectionKey, value: unknown)
             }
         }
         return out;
+    }
+    if (section === 'infoPanels') {
+        const list = value as Panel[];
+        if (!Array.isArray(list)) return ['Send the info panels as a list.'];
+        if (list.length > PANEL_LIMITS.panels) return [`At most ${PANEL_LIMITS.panels} info panels.`];
+        return list.flatMap((p) => validatePanel(p).map((e) => `“${p.name || 'Info panel'}”: ${e}`));
     }
     const panels = value as TicketPanel[];
     if (!Array.isArray(panels)) return ['Send the panels as a list.'];
