@@ -10,6 +10,7 @@ import { findTranscript } from './src/source';
 const PORT = Number(process.env.TRANSCRIPT_PORT ?? 5180);
 const DIST = join(import.meta.dir, 'dist');
 const ID = /^[A-Za-z0-9_]+$/;
+const SAMPLE = /^(tr_showcase|tr_mock\d+)$/;
 const page = () => new Response(Bun.file(join(DIST, 'index.html')), { headers: { 'content-type': 'text/html; charset=utf-8', 'x-robots-tag': 'noindex' } });
 
 Bun.serve({
@@ -19,9 +20,11 @@ Bun.serve({
         if (pathname === '/health') return Response.json({ ok: true });
         if (!pathname.startsWith(`${BASE}/`)) return new Response('Not found', { status: 404 });
         const rest = pathname.slice(BASE.length + 1);
+        // Only the built-in samples are served here. Real transcripts come from the dashboard's API, which checks who is
+        // asking (GET /discord/api/ticket/transcript/:id): serving them here too would skip that check.
         if (rest.startsWith('api/')) {
             const id = rest.slice(4);
-            const doc = ID.test(id) ? await findTranscript(id).catch(() => null) : null;
+            const doc = SAMPLE.test(id) ? await findTranscript(id).catch(() => null) : null;
             return Response.json(doc ?? { error: 'not_found' }, { status: doc ? 200 : 404, headers: { 'cache-control': 'private, max-age=60', 'x-robots-tag': 'noindex' } });
         }
         if (rest.startsWith('assets/') && !rest.includes('..')) {
