@@ -40,6 +40,10 @@ jobs:
 
       - name: Test
         run: bun run test
+        # Not a real token: the config module needs one to load; nothing logs in to Discord in the tests.
+        env:
+          DISCORD_TOKEN: MTAwMDAwMDAwMDAwMDAwMDAw.ci.test
+          MONGODB_URI: mongodb://127.0.0.1:27017/robtic-ticket-test
 
   # `:production` is what the robtic-bots Portainer stack runs (robtic-ticket and robtic-ticket-transcripts);
   # `:sha-<commit>` never moves, so a rollback is the Portainer variable TICKET_IMAGE_TAG=sha-<commit>.
