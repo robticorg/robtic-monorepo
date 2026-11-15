@@ -1,6 +1,6 @@
 import type { Guild, GuildMember } from "discord.js";
-import { t, type Locale, type MessageKey, type TicketAction, type TicketCome, type TicketOption, type TicketPanel } from "@robo/shared";
-import { button, buttonRows, emojiOf, fill, menuRow, renderMessage, type Payload, type Row, type Vars } from "@/lib/messagePayload";
+import { t, type Locale, type MessageKey, type TicketAction, type TicketCome, type TicketInfoItem, type TicketOption, type TicketPanel } from "@robo/shared";
+import { button, emojiOf, fill, renderMessage, slotRows, type Payload, type Row, type SlotItem, type Vars } from "@/lib/messagePayload";
 import { controlRows } from "@/Permissions/buttons";
 import { IDS, type TicketContext } from "./types";
 
@@ -8,12 +8,25 @@ import { IDS, type TicketContext } from "./types";
 // the form answers, the closed message (with Reopen / Transcript / Delete), the !come direct message, and the one-line
 // notices after a control (the dashboard's text, or the built-in line in the server's language).
 
+/** Info buttons as slot entries (a button `tk:v:…`, or a menu value `v:…`). Ones without a panel are left out. */
+export function infoSlotItems(items: readonly TicketInfoItem[]): SlotItem[] {
+    return items.filter((i) => i.panelId).map((i) => ({
+        placement: i.placement,
+        button: button(IDS.info(i.panelId!, i.id), i.label, i.emoji, i.style),
+        option: { label: i.label, value: IDS.infoValue(i.panelId!, i.id), description: i.description, emoji: i.emoji },
+    }));
+}
+
 export function panelPayload(panel: TicketPanel, guild: Guild): Payload {
-    const options = panel.options;
-    const slot = panel.display === "menu"
-        ? [menuRow(IDS.menu(panel.id), panel.placeholder, options.map((o) => ({ label: o.label, value: o.id, description: o.description, emoji: o.emoji })))]
-        : buttonRows(options.map((o) => button(IDS.open(panel.id, o.id), o.label, o.emoji, o.style)));
-    return renderMessage(panel.message, { server: guild.name }, slot);
+    const items: SlotItem[] = [
+        ...panel.options.map((o): SlotItem => ({
+            placement: o.placement,
+            button: button(IDS.open(panel.id, o.id), o.label, o.emoji, o.style),
+            option: { label: o.label, value: o.id, description: o.description, emoji: o.emoji },
+        })),
+        ...infoSlotItems(panel.info),
+    ];
+    return renderMessage(panel.message, { server: guild.name }, slotRows(items, IDS.menu(panel.id), panel.placeholder));
 }
 
 export function ticketVars(guild: Guild, owner: GuildMember | { id: string; displayName: string }, option: Pick<TicketOption, "label" | "supportRoleIds">, number: number, channelId?: string): Vars {

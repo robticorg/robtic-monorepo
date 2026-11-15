@@ -20,7 +20,16 @@ export const IDS = {
     memberForm: (what: "add" | "remove" | "transfer") => `tk:mm:${what}`,
     /** "Yes" on an "are you sure?" for Close or Delete. */
     confirm: (action: TicketAction) => `tk:y:${action}`,
+    /** An info button (on a panel or among a ticket's controls): shows that info panel. The item id keeps ids unique. */
+    info: (infoPanelId: string, itemId: string) => `tk:v:${infoPanelId}:${itemId}`,
+    /** An info button placed in a menu: the picked value. */
+    infoValue: (infoPanelId: string, itemId: string) => `v:${infoPanelId}:${itemId}`,
+    /** A button or menu inside an info panel. */
+    infoItem: (panelId: string, itemId: string) => `tk:x:${panelId}:${itemId}`,
 } as const;
+
+/** The info panel an info button's menu value points at (`v:<panelId>:<itemId>`), if it is one. */
+export const infoPanelOf = (value: string) => (value.startsWith("v:") ? value.split(":")[1] ?? null : null);
 
 export const PREFIX = "tk:";
 

@@ -3,6 +3,7 @@ import env from "@robo/config";
 import { Logger } from "@robo/logger";
 import { PanelPostRepository, SettingsRepository } from "@robo/db";
 import { panelPayload } from "./TicketEmbed";
+import { infoPanelPayload } from "./infoPanels";
 
 // The dashboard's "Post" button: it leaves a request in `panelposts`; this picks requests up every few seconds, posts
 // the panel in its channel (or edits it where it already is) and writes back where, so the dashboard shows "Posted".
@@ -16,12 +17,16 @@ async function postOne(client: Client, guildId: string, panelId: string): Promis
     const guild = client.guilds.cache.get(guildId);
     if (!guild) return "The bot isn't in that server.";
     settings.forget(guildId);
-    const panel = (await settings.get(guildId)).panels.find((p) => p.id === panelId);
+    const s = await settings.get(guildId);
+    // A ticket panel, or an info panel posted in a channel of its own.
+    const ticketPanel = s.panels.find((p) => p.id === panelId);
+    const infoPanel = ticketPanel ? undefined : s.infoPanels.find((p) => p.id === panelId);
+    const panel = ticketPanel ?? infoPanel;
     if (!panel) return "That panel no longer exists.";
     if (!panel.channelId) return "The panel has no channel.";
     const channel = guild.channels.cache.get(panel.channelId) ?? (await guild.channels.fetch(panel.channelId).catch(() => null));
     if (!channel?.isSendable() || !channel.isTextBased()) return "The bot can't post in that channel.";
-    const payload = panelPayload(panel, guild);
+    const payload = ticketPanel ? panelPayload(ticketPanel, guild) : infoPanelPayload(infoPanel!, false);
 
     // Already posted in this channel: edit that message (a switch between embed and components needs a new one).
     if (panel.posted?.channelId === channel.id) {

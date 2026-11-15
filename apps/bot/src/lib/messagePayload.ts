@@ -63,6 +63,21 @@ export function menuRow(customId: string, placeholder: string, options: { label:
     };
 }
 
+/** One entry of a message's interactive part: drawn as a button, or as an option of the message's one menu. */
+export interface SlotItem {
+    placement: "button" | "menu";
+    button: Record<string, unknown>;
+    option: { label: string; value: string; description?: string; emoji?: string };
+}
+
+/** Buttons first (rows of 5; 20 at most when there's a menu, Discord allows 5 rows), then one menu with the rest. */
+export function slotRows(items: readonly SlotItem[], menuId: string, placeholder: string): Row[] {
+    const menu = items.filter((i) => i.placement === "menu").map((i) => i.option);
+    const rows = buttonRows(items.filter((i) => i.placement === "button").map((i) => i.button).slice(0, menu.length ? 20 : 25));
+    if (menu.length) rows.push(menuRow(menuId, placeholder, menu));
+    return rows;
+}
+
 /** Uploaded pictures (data URLs) become attachments; https links are used as they are. */
 class Files {
     readonly list: { attachment: Buffer; name: string }[] = [];
