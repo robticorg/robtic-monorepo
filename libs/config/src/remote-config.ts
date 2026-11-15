@@ -39,6 +39,41 @@ const listeners = new Set<(ids: string[]) => void>();
 
 let emojis: Record<string, string> = {};
 
+/* ------------------------------------------------------------------ which servers this bot may be in */
+
+// One list for every Robtic bot, kept in the admin console (Discord → Allowed servers) in the config store's `admin`
+// document: `servers` (the allowed servers) and `openBots` (bots open to every server, the list doesn't apply).
+// Until that list exists (`servers` missing) nothing is decided here: isGuildAllowed answers null and the bot keeps
+// its old behaviour, so a bot never leaves every server because the list hasn't been saved yet.
+
+interface AccessDoc { servers?: { guildId: string }[]; openBots?: string[] }
+let access: { configured: boolean; open: boolean; servers: Set<string> } = { configured: false, open: false, servers: new Set() };
+const accessListeners = new Set<() => void>();
+
+/** false: leave (blocked, or not on the list and the bot isn't open to everyone). true: may stay. null: no list yet. */
+export function isGuildAllowed(guildId: string): boolean | null {
+  if (blocked.has(guildId)) return false;
+  if (!access.configured) return null;
+  return access.open || access.servers.has(guildId);
+}
+
+/** Called when the list or this bot's "open to everyone" changes (so the bot can leave servers no longer allowed). */
+export function onAccessChange(fn: () => void): void {
+  accessListeners.add(fn);
+}
+
+function applyAccess(d: AccessDoc | null): boolean {
+  const next = {
+    configured: Array.isArray(d?.servers),
+    open: Array.isArray(d?.openBots) && d!.openBots!.includes(BOT),
+    servers: new Set((d?.servers ?? []).map((s) => s.guildId)),
+  };
+  const changed = next.configured !== access.configured || next.open !== access.open
+    || next.servers.size !== access.servers.size || [...next.servers].some((id) => !access.servers.has(id));
+  access = next;
+  return changed;
+}
+
 /** The emoji the admin console put in this slot, or undefined to use the bot's default. */
 export const getEmojiOverride = (key: string): string | undefined => emojis[key] || undefined;
 
@@ -184,6 +219,8 @@ if (URI && KEY && REMOTE) {
   const count = apply(doc);
   reloadEnv = async () => { const d = await read(); if (d) apply(d); };
   blocked = new Set((doc.blacklist ?? []).map((b) => b.guildId));
+  const readAccess = () => conn.collection<AccessDoc & { _id: string }>(COLLECTION).findOne({ _id: "admin" } as never, { projection: { servers: 1, openBots: 1 } }) as Promise<AccessDoc | null>;
+  applyAccess(await readAccess().catch(() => null));
   emojis = { ...(doc.emojis ?? {}) };
   console.log(`[remote-config] ${count} settings loaded for ${BOT}, ${blocked.size} blocked server(s).`);
 
@@ -195,6 +232,9 @@ if (URI && KEY && REMOTE) {
       const changed = next.size !== blocked.size || [...next].some((id) => !blocked.has(id));
       blocked = next;
       if (changed) for (const fn of listeners) fn([...next]);
+      // The shared allowlist: only a read that worked can change it (a failed one throws above or below, never empties it).
+      const acc = await readAccess();
+      if (applyAccess(acc)) for (const fn of accessListeners) fn();
     } catch (err) {
       console.warn("[remote-config] could not refresh the blocked servers and emojis", err);
     }
