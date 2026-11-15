@@ -354,6 +354,12 @@ export const TICKET_LIMITS = {
     cooldown: 1440,
     /** Seconds Delete waits before the channel goes. */
     deleteDelay: 60,
+    /** Auto-delete after closing: up to 7 days, in seconds. */
+    autoDelete: 604_800,
+    confirmText: 300,
+    /** Picture limits in a ticket: up to Discord's 500 MB, and 500 pictures. */
+    imageMB: 500,
+    images: 500,
     templates: 100,
     templateName: 60,
 } as const;
@@ -651,6 +657,50 @@ export const PLACE_INFO: Record<PlaceKey, { name: string; none: string; category
     transcriptChannelId: { name: 'Transcript channel', none: 'No transcript post', category: false },
 };
 
+/* ------------------------------------------------------------------ after a ticket closes */
+
+/**
+ * What happens around closing and deleting. The server sets defaults (Settings); each ticket option can use them or set
+ * its own (null = use the server's).
+ */
+export interface TicketLifecycle {
+    /** Save the transcript again when the ticket is deleted (so it has everything said after it closed). */
+    transcriptOnDelete: boolean;
+    /** Delete a closed ticket this many seconds after it closed; 0 = never (only the Delete control). */
+    autoDeleteSeconds: number;
+    /** The "are you sure?" when closing; empty = the built-in line in the server's language. */
+    closeConfirm: string;
+    /** Largest picture a member may post in a ticket, in MB; 0 = Discord's own limit. */
+    maxImageMB: number;
+    /** Most pictures one ticket may hold (all messages together); 0 = no limit. */
+    maxImages: number;
+}
+
+export type TicketLifecycleOverride = { [K in keyof TicketLifecycle]: TicketLifecycle[K] | null };
+
+export const defaultLifecycle = (): TicketLifecycle => ({ transcriptOnDelete: true, autoDeleteSeconds: 0, closeConfirm: '', maxImageMB: 0, maxImages: 0 });
+export const inheritLifecycle = (): TicketLifecycleOverride => ({ transcriptOnDelete: null, autoDeleteSeconds: null, closeConfirm: null, maxImageMB: null, maxImages: null });
+
+/** An option's own choice, else the server's. */
+export function resolveLifecycle(g: TicketGeneral, o: TicketOption | null): TicketLifecycle {
+    const own = o?.lifecycle ?? inheritLifecycle();
+    return {
+        transcriptOnDelete: own.transcriptOnDelete ?? g.lifecycle.transcriptOnDelete,
+        autoDeleteSeconds: own.autoDeleteSeconds ?? g.lifecycle.autoDeleteSeconds,
+        closeConfirm: own.closeConfirm ?? g.lifecycle.closeConfirm,
+        maxImageMB: own.maxImageMB ?? g.lifecycle.maxImageMB,
+        maxImages: own.maxImages ?? g.lifecycle.maxImages,
+    };
+}
+
+/** "45 seconds", "5 minutes", "2 hours", "3 days": for the dashboard and the bot's notice. */
+export function durationText(seconds: number, lang: TicketLanguage = 'en'): string {
+    const units: [number, string, string][] = [[86_400, 'day', 'يوم'], [3_600, 'hour', 'ساعة'], [60, 'minute', 'دقيقة'], [1, 'second', 'ثانية']];
+    const [size, en, ar] = units.find(([u]) => seconds >= u && seconds % u === 0) ?? units[3]!;
+    const n = Math.round(seconds / size);
+    return lang === 'ar' ? `${n} ${ar}` : `${n} ${en}${n === 1 ? '' : 's'}`;
+}
+
 /* ------------------------------------------------------------------ options and panels */
 
 export interface TicketOption extends TicketPlaces {
@@ -682,6 +732,8 @@ export interface TicketOption extends TicketPlaces {
     closed: MessageDesign;
     permissions: TicketPermissions;
     controls: TicketControls;
+    /** Transcript on delete, auto-delete, close confirmation: this option's own, or the server's (null). */
+    lifecycle: TicketLifecycleOverride;
 }
 
 export interface TicketPanel extends TicketPlaces {
@@ -712,6 +764,8 @@ export interface TicketGeneral extends TicketPlaces {
     /** Robtic Staff points for the staff member who claims a ticket (sent to Robtic Staff's points API; needs Robtic
      *  Staff in the server, and only counts for its staff). */
     staffPoints: { enabled: boolean; perClaim: number };
+    /** Defaults for every ticket option: transcript on delete, auto-delete after closing, the close confirmation. */
+    lifecycle: TicketLifecycle;
 }
 
 /* ------------------------------------------------------------------ !come */
@@ -972,6 +1026,7 @@ export function newTicketOption(label = 'Support', emoji = '🎫'): TicketOption
         closed: defaultClosedMessage(),
         permissions: defaultTicketPermissions(),
         controls: defaultTicketControls(),
+        lifecycle: inheritLifecycle(),
     };
 }
 
@@ -1026,7 +1081,7 @@ export const newMessageBlock = (kind: MessageBlockKind, infoPanel?: { id: string
 };
 
 export const defaultTicketSettings = (): TicketSettings => ({
-    general: { language: 'en', prefix: '!', ...noPlaces(), transcriptToOwner: true, blacklistRoleIds: [], nextNumber: 1, staffPoints: { enabled: true, perClaim: 1 } },
+    general: { language: 'en', prefix: '!', ...noPlaces(), transcriptToOwner: true, blacklistRoleIds: [], nextNumber: 1, staffPoints: { enabled: true, perClaim: 1 }, lifecycle: defaultLifecycle() },
     panels: [],
     come: defaultCome(),
     commands: defaultCommands(),
@@ -1095,6 +1150,17 @@ function normalizeControls(x: unknown, askReason: boolean): TicketControls {
     };
 }
 
+function normalizeOverride(x: unknown): TicketLifecycleOverride {
+    const o = obj(x);
+    return {
+        transcriptOnDelete: typeof o.transcriptOnDelete === 'boolean' ? o.transcriptOnDelete : null,
+        autoDeleteSeconds: typeof o.autoDeleteSeconds === 'number' ? o.autoDeleteSeconds : null,
+        closeConfirm: typeof o.closeConfirm === 'string' ? o.closeConfirm : null,
+        maxImageMB: typeof o.maxImageMB === 'number' ? o.maxImageMB : null,
+        maxImages: typeof o.maxImages === 'number' ? o.maxImages : null,
+    };
+}
+
 function normalizeQuestion(x: unknown): TicketQuestion {
     const q = obj(x);
     const kind = (QUESTION_KINDS.some(([k]) => k === q.kind) ? q.kind : q.style === 'short' ? 'short' : 'paragraph') as QuestionKind;
@@ -1127,6 +1193,7 @@ function normalizeOption(x: unknown, askReason: boolean, was: ItemPlacement): Ti
         closed: (o.closed as MessageDesign | undefined) ?? d.closed,
         permissions: normalizePermissions(o.permissions),
         controls: normalizeControls(o.controls, askReason),
+        lifecycle: normalizeOverride(o.lifecycle),
     };
 }
 
@@ -1156,7 +1223,7 @@ export function normalizeTicketSettings(raw: unknown): TicketSettings {
     const come = obj(r.come);
     const commands = obj(r.commands);
     return {
-        general: { ...d.general, ...(general as Partial<TicketGeneral>), blacklistRoleIds: arr(g.blacklistRoleIds), staffPoints: { ...d.general.staffPoints, ...obj(g.staffPoints) } as TicketGeneral['staffPoints'] },
+        general: { ...d.general, ...(general as Partial<TicketGeneral>), blacklistRoleIds: arr(g.blacklistRoleIds), staffPoints: { ...d.general.staffPoints, ...obj(g.staffPoints) } as TicketGeneral['staffPoints'], lifecycle: { ...d.general.lifecycle, ...(obj(g.lifecycle) as Partial<TicketLifecycle>) } },
         panels: arr(r.panels).map((p) => normalizePanel(p, askReason)),
         come: { ...d.come, ...(come as Partial<TicketCome>), roleIds: arr(come.roleIds), button: { ...d.come.button, ...obj(come.button) } },
         commands: Object.fromEntries(TICKET_COMMANDS.map((c) => [c, { enabled: obj(commands[c]).enabled !== false, aliases: arr<string>(obj(commands[c]).aliases) }])) as TicketSettings['commands'],
@@ -1325,6 +1392,18 @@ function infoBlockErrors(b: InfoBlock, where: string): string[] {
     return out;
 }
 
+function lifecycleErrors(l: Partial<TicketLifecycle> | TicketLifecycleOverride, where: string): string[] {
+    const out: string[] = [];
+    const s = l.autoDeleteSeconds;
+    if (s !== null && s !== undefined && (!Number.isInteger(s) || s < 0 || s > TICKET_LIMITS.autoDelete)) out.push(`${where}: auto-delete is 0 to ${TICKET_LIMITS.autoDelete.toLocaleString('en')} seconds (7 days).`);
+    const mb = l.maxImageMB;
+    if (mb !== null && mb !== undefined && (!Number.isFinite(mb) || mb < 0 || mb > TICKET_LIMITS.imageMB)) out.push(`${where}: the picture size limit is 0 to ${TICKET_LIMITS.imageMB} MB.`);
+    const n = l.maxImages;
+    if (n !== null && n !== undefined && (!Number.isInteger(n) || n < 0 || n > TICKET_LIMITS.images)) out.push(`${where}: pictures per ticket are 0 to ${TICKET_LIMITS.images}.`);
+    if (typeof l.closeConfirm === 'string' && l.closeConfirm.length > TICKET_LIMITS.confirmText) out.push(`${where}: the close confirmation is over ${TICKET_LIMITS.confirmText} characters.`);
+    return out;
+}
+
 export function validateTicketOption(o: TicketOption): string[] {
     const name = `“${o.label || 'Option'}”`;
     const out: string[] = [];
@@ -1344,6 +1423,7 @@ export function validateTicketOption(o: TicketOption): string[] {
         if (it.delay < 0 || it.delay > TICKET_LIMITS.deleteDelay) out.push(`${name}: Delete waits 0 to ${TICKET_LIMITS.deleteDelay} seconds.`);
     }
     out.push(...slotErrors(OPEN_ACTIONS.filter((a) => o.controls.items[a].shown).map((a) => o.controls.items[a].placement), `${name} controls`));
+    out.push(...lifecycleErrors(o.lifecycle, name));
     out.push(...messageErrors(o.welcome, `${name} ticket message`));
     out.push(...messageErrors(o.closed, `${name} closed message`));
     return out;
@@ -1371,6 +1451,7 @@ export function validateTicketSection(section: TicketSectionKey, value: unknown)
         if (!Number.isInteger(g.nextNumber) || g.nextNumber < 1) out.push('Ticket numbers start at 1 or more.');
         const sp = g.staffPoints;
         if (!sp || typeof sp.enabled !== 'boolean' || !Number.isInteger(sp.perClaim) || sp.perClaim < 1 || sp.perClaim > 100) out.push('Staff points for a claim are 1 to 100.');
+        out.push(...lifecycleErrors(g.lifecycle ?? {}, 'Closing defaults'));
         return out;
     }
     if (section === 'profile') return validateProfile(value as BotProfile);

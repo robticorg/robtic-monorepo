@@ -64,10 +64,15 @@ const ticketSchema = new Schema(
         /** Renames and topic changes, for the transcript. */
         channelEvents: { type: [{ type: { type: String }, from: String, to: String, at: Date, _id: false }], default: [] },
         transcriptId: { type: String, default: null },
+        /** Closed with auto-delete on: when the channel goes (a sweep deletes it; reopening clears it). */
+        deleteAt: { type: Date, default: null },
+        /** Pictures posted so far (for the per-ticket limit). */
+        imageCount: { type: Number, default: 0 },
     },
     { timestamps: true },
 );
 ticketSchema.index({ guildId: 1, ownerId: 1, optionId: 1, status: 1 });
+ticketSchema.index({ deleteAt: 1 }, { partialFilterExpression: { deleteAt: { $type: 'date' } } });
 
 /** The latest state of each message in a ticket channel (the transcript is built from these). */
 const transcriptMessageSchema = new Schema(
