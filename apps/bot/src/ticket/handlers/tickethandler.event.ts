@@ -43,6 +43,11 @@ export default {
             if (interaction.isButton() && kind === "o" && a && b) return await openFromPanel(interaction, a, b);
             if (interaction.isButton() && kind === "v" && a) return await showInfoPanel(interaction, a);
             if (kind === "x" && a && b) return await infoPanelClick(interaction, a, b);
+            if (interaction.isStringSelectMenu() && kind === "vm") {
+                const info = infoPanelOf(interaction.values[0] ?? "");
+                if (info) await showInfoPanel(interaction, info);
+                return;
+            }
             if (interaction.isStringSelectMenu() && kind === "m" && a) {
                 const value = interaction.values[0];
                 const info = value ? infoPanelOf(value) : null;

@@ -313,8 +313,8 @@ export function validatePanel(p: Panel, music?: { components: number }): string[
 // menu), and for every option what happens when a member opens it: the channel it makes, who sees it and what they may
 // do there, the message the bot posts inside it and that message's ticket controls (Close, Claim, Rename…), and the
 // message posted when it closes. Info panels (the same builder as Robtic System's panels) are shown to whoever presses
-// an info button on a ticket panel or among a ticket's controls. Every option, control and info button is either a
-// button or an entry in the message's one menu (`placement`), so some can sit in a menu and the rest stay buttons.
+// an info button: a block of its own (buttons or a menu) in a Components message. Every ticket option and control is a
+// button or an entry in the message's one menu (`placement`; the closed message has its own, `closedPlacement`).
 //
 // Channels and categories cascade: a ticket option's own choice wins, then its panel's, then the server's (Settings).
 //
@@ -371,15 +371,27 @@ export interface TicketInfoItem {
     label: string;
     emoji: string;
     style: TicketButtonStyle;
-    /** In the menu: the small line under the label. */
+    /** In a menu: the small line under the label. */
     description: string;
-    placement: ItemPlacement;
-    /** The info panel it shows (Info panels page). */
-    panelId: string | null;
+    /** The info panel it shows (an existing one from the Info panels page). */
+    panelId: string;
 }
 
-export const newInfoItem = (label = 'Info', placement: ItemPlacement = 'button', panel: string | null = null): TicketInfoItem => ({
-    id: panelId('n'), label, emoji: 'ℹ️', style: 'secondary', description: '', placement, panelId: panel,
+export const newInfoItem = (panel: string, label = 'Info'): TicketInfoItem => ({
+    id: panelId('n'), label, emoji: 'ℹ️', style: 'secondary', description: '', panelId: panel,
+});
+
+/** A block of info buttons in a Components message: a row of buttons, or one menu. */
+export interface InfoBlock {
+    id: string;
+    type: 'info';
+    display: 'buttons' | 'menu';
+    placeholder: string;
+    items: TicketInfoItem[];
+}
+
+export const newInfoBlock = (panel: string, label = 'Info'): InfoBlock => ({
+    id: panelId('v'), type: 'info', display: 'buttons', placeholder: 'More information', items: [newInfoItem(panel, label)],
 });
 
 /* ------------------------------------------------------------------ a message the bot sends */
@@ -394,6 +406,7 @@ export type MessageBlock =
     | { id: string; type: 'image'; url: string }
     | { id: string; type: 'thumbText'; content: string; thumbnail: string }
     | { id: string; type: 'separator'; divider: boolean; spacing: 1 | 2 }
+    | InfoBlock
     | { id: string; type: 'slot' };
 
 export const MESSAGE_BLOCK_KINDS = [
@@ -401,6 +414,7 @@ export const MESSAGE_BLOCK_KINDS = [
     ['thumbText', 'Text with a picture', 'Text with a small picture beside it.'],
     ['image', 'Image', 'A wide picture or GIF.'],
     ['separator', 'Separator', 'A divider line or a gap.'],
+    ['info', 'Info buttons', 'Buttons or a menu that show your info panels.'],
 ] as const;
 export type MessageBlockKind = (typeof MESSAGE_BLOCK_KINDS)[number][0];
 
@@ -552,8 +566,10 @@ export interface TicketControlItem extends TicketWho {
     notice: string;
     /** Delete: seconds before the channel goes. */
     delay: number;
-    /** A button, or an entry in the controls menu. */
+    /** On the open ticket's message: a button, or an entry in its menu. */
     placement: ItemPlacement;
+    /** On the closed message (Reopen, Transcript, Delete): set apart from the open ticket's. */
+    closedPlacement: ItemPlacement;
 }
 
 export interface TicketControls {
@@ -562,8 +578,6 @@ export interface TicketControls {
     /** The closed message's menu. */
     closedPlaceholder: string;
     items: Record<TicketAction, TicketControlItem>;
-    /** Info buttons beside the open ticket's controls. */
-    info: TicketInfoItem[];
 }
 
 /** Which settings each control has, in its settings popup. */
@@ -681,8 +695,6 @@ export interface TicketPanel extends TicketPlaces {
     /** Members with these roles can't open tickets here (added to the server's list). */
     blacklistRoleIds: Snowflake[];
     options: TicketOption[];
-    /** Info buttons beside the ticket options. */
-    info: TicketInfoItem[];
     posted: { channelId: Snowflake; messageId: Snowflake; at: string } | null;
 }
 
@@ -840,13 +852,12 @@ export const ticketEmbed = (over: Partial<PanelEmbed> = {}): PanelEmbed => ({
 });
 
 const item = (label: string, emoji: string, style: TicketButtonStyle, who: TicketTarget[], description = '', more: Partial<TicketControlItem> = {}): TicketControlItem => ({
-    shown: true, label, emoji, style, description, who, roleIds: [], confirm: false, reason: false, notice: '', delay: 0, placement: 'button', ...more,
+    shown: true, label, emoji, style, description, who, roleIds: [], confirm: false, reason: false, notice: '', delay: 0, placement: 'button', closedPlacement: 'button', ...more,
 });
 
 export const defaultTicketControls = (): TicketControls => ({
     placeholder: 'Ticket options',
     closedPlaceholder: 'Closed ticket options',
-    info: [],
     items: {
         close: item('Close', '🔒', 'danger', ['owner', 'claimer', 'support', 'manager'], 'Close this ticket', { confirm: true }),
         claim: item('Claim', '🙋', 'success', ['support', 'manager'], 'Take this ticket'),
@@ -983,7 +994,6 @@ export function newTicketPanel(name = 'Support'): TicketPanel {
         placeholder: 'What is your ticket about?',
         blacklistRoleIds: [],
         options: [newTicketOption('Support', '🎫')],
-        info: [],
         posted: null,
     };
 }
@@ -1005,8 +1015,9 @@ export const newQuestion = (kind: QuestionKind = 'paragraph'): TicketQuestion =>
     }
 };
 
-export const newMessageBlock = (kind: MessageBlockKind): MessageBlock => {
+export const newMessageBlock = (kind: MessageBlockKind, infoPanel?: { id: string; name: string }): MessageBlock => {
     switch (kind) {
+        case 'info': return newInfoBlock(infoPanel?.id ?? '', infoPanel?.name || 'Info');
         case 'text': return { id: panelId('t'), type: 'text', content: '' };
         case 'thumbText': return { id: panelId('h'), type: 'thumbText', content: '', thumbnail: '' };
         case 'image': return { id: panelId('i'), type: 'image', url: '' };
@@ -1048,12 +1059,16 @@ function normalizePermissions(x: unknown): TicketPermissions {
 
 const placementOf = (x: unknown, fallback: ItemPlacement): ItemPlacement => (x === 'menu' || x === 'button' ? x : fallback);
 
-function normalizeInfo(x: unknown, fallback: ItemPlacement): TicketInfoItem[] {
-    return arr(x).map((i) => {
-        const o = obj(i);
-        const d = newInfoItem();
-        return { ...d, ...(o as Partial<TicketInfoItem>), id: typeof o.id === 'string' ? o.id : d.id, placement: placementOf(o.placement, fallback), panelId: typeof o.panelId === 'string' ? o.panelId : null };
-    });
+/** Info buttons from the first version (beside the options or the controls) become an info block in the message. */
+function infoAsBlock(x: unknown, m: MessageDesign): MessageDesign {
+    const items = arr(x).map(obj).filter((o) => typeof o.panelId === 'string' && o.panelId);
+    if (!items.length || m.blocks.some((b) => b.type === 'info')) return m;
+    const block: InfoBlock = {
+        ...newInfoBlock(String(items[0]!.panelId)),
+        display: items.every((o) => o.placement === 'menu') ? 'menu' : 'buttons',
+        items: items.map((o) => ({ ...newInfoItem(String(o.panelId)), ...(o as Partial<TicketInfoItem>), panelId: String(o.panelId) })),
+    };
+    return { ...m, blocks: [...m.blocks, block] };
 }
 
 function normalizeControls(x: unknown, askReason: boolean): TicketControls {
@@ -1066,7 +1081,10 @@ function normalizeControls(x: unknown, askReason: boolean): TicketControls {
     const merged = Object.fromEntries(TICKET_ACTIONS.map((a) => {
         const it = obj(items[a]);
         const was = a === 'reopen' || a === 'delete' ? closedWas : openWas;
-        return [a, { ...d.items[a], ...it, roleIds: arr<string>(it.roleIds), placement: placementOf(it.placement, was) }];
+        const placement = placementOf(it.placement, was);
+        // The closed message's own placement: the old closed display, else what Reopen and Delete already had.
+        const closedPlacement = placementOf(it.closedPlacement, c.closedDisplay !== undefined ? closedWas : a === 'reopen' || a === 'delete' ? placement : 'button');
+        return [a, { ...d.items[a], ...it, roleIds: arr<string>(it.roleIds), placement, closedPlacement }];
     })) as Record<TicketAction, TicketControlItem>;
     if (askReason && !obj(items.close).hasOwnProperty('reason')) merged.close.reason = true;
     merged.close.shown = true;
@@ -1074,7 +1092,6 @@ function normalizeControls(x: unknown, askReason: boolean): TicketControls {
         placeholder: typeof c.placeholder === 'string' ? c.placeholder : d.placeholder,
         closedPlaceholder: typeof c.closedPlaceholder === 'string' ? c.closedPlaceholder : d.closedPlaceholder,
         items: merged,
-        info: normalizeInfo(c.info, openWas),
     };
 }
 
@@ -1106,7 +1123,7 @@ function normalizeOption(x: unknown, askReason: boolean, was: ItemPlacement): Ti
         supportRoleIds: arr(o.supportRoleIds),
         managerRoleIds: arr(o.managerRoleIds),
         questions: arr(o.questions).map(normalizeQuestion),
-        welcome: (o.welcome as MessageDesign | undefined) ?? d.welcome,
+        welcome: infoAsBlock(obj(o.controls).info, (o.welcome as MessageDesign | undefined) ?? d.welcome),
         closed: (o.closed as MessageDesign | undefined) ?? d.closed,
         permissions: normalizePermissions(o.permissions),
         controls: normalizeControls(o.controls, askReason),
@@ -1114,7 +1131,7 @@ function normalizeOption(x: unknown, askReason: boolean, was: ItemPlacement): Ti
 }
 
 function normalizePanel(x: unknown, askReason: boolean): TicketPanel {
-    const { display: _old, ...p } = obj(x);
+    const { display: _old, info: _info, ...p } = obj(x);
     // Before placements: every option was a button, or all were in one menu.
     const was: ItemPlacement = _old === 'menu' ? 'menu' : 'button';
     return {
@@ -1124,7 +1141,7 @@ function normalizePanel(x: unknown, askReason: boolean): TicketPanel {
         placeholder: typeof p.placeholder === 'string' ? p.placeholder : 'What is your ticket about?',
         blacklistRoleIds: arr(p.blacklistRoleIds),
         options: arr(p.options).map((o) => normalizeOption(o, askReason, was)),
-        info: normalizeInfo(p.info, was),
+        message: infoAsBlock(_info, (p.message as MessageDesign | undefined) ?? newTicketPanel().message),
         posted: (p.posted as TicketPanel['posted'] | undefined) ?? null,
     };
 }
@@ -1232,14 +1249,13 @@ export function panelFromTemplate(t: Pick<TicketTemplate, 'panel' | 'guildId' | 
         channelId: same ? p.channelId : null,
         blacklistRoleIds: same ? p.blacklistRoleIds : [],
         posted: null,
-        info: p.info.map((i) => ({ ...i, id: panelId('n'), panelId: same ? i.panelId : null })),
         options: p.options.map((o) => ({
             ...clearPlaces(o),
             id: panelId('o'),
             supportRoleIds: same ? o.supportRoleIds : [],
             managerRoleIds: same ? o.managerRoleIds : [],
             permissions: same ? o.permissions : { open: { ...o.permissions.open, roles: {} }, closed: { ...o.permissions.closed, roles: {} } },
-            controls: same ? o.controls : { ...o.controls, info: o.controls.info.map((i) => ({ ...i, panelId: null })), items: Object.fromEntries(TICKET_ACTIONS.map((a) => [a, { ...o.controls.items[a], roleIds: [] }])) as unknown as TicketControls['items'] },
+            controls: same ? o.controls : { ...o.controls, items: Object.fromEntries(TICKET_ACTIONS.map((a) => [a, { ...o.controls.items[a], roleIds: [] }])) as unknown as TicketControls['items'] },
         })),
     };
 }
@@ -1261,6 +1277,7 @@ function messageErrors(m: MessageDesign, where: string): string[] {
         const text = m.blocks.reduce((n, b) => n + (b.type === 'text' || b.type === 'thumbText' ? b.content.length : 0), 0);
         if (text > PANEL_LIMITS.text) out.push(`${where}: the text is over ${PANEL_LIMITS.text} characters.`);
         if (!m.blocks.some((b) => (b.type === 'text' || b.type === 'thumbText') && !blank(b.content)) && !m.blocks.some((b) => b.type === 'image' && b.url)) out.push(`${where}: write something in it.`);
+        for (const b of m.blocks) if (b.type === 'info') out.push(...infoBlockErrors(b, where));
     }
     return out;
 }
@@ -1281,9 +1298,10 @@ function questionErrors(q: TicketQuestion, name: string): string[] {
 }
 
 /** One message's buttons and menu: at most 25 buttons (20 when there's also a menu: 5 rows in all) and 25 menu entries. */
-function slotErrors(items: readonly { placement: ItemPlacement }[], where: string): string[] {
-    const menu = items.filter((i) => i.placement === 'menu').length;
-    const buttons = items.length - menu;
+/** One message's buttons and menu: at most 25 buttons (20 when there's also a menu: 5 rows in all) and 25 menu entries. */
+function slotErrors(placements: readonly ItemPlacement[], where: string): string[] {
+    const menu = placements.filter((p) => p === 'menu').length;
+    const buttons = placements.length - menu;
     const maxButtons = menu ? 20 : 25;
     const out: string[] = [];
     if (buttons > maxButtons) out.push(`${where}: at most ${maxButtons} buttons${menu ? ' with a menu' : ''} (Discord allows 5 rows).`);
@@ -1291,12 +1309,16 @@ function slotErrors(items: readonly { placement: ItemPlacement }[], where: strin
     return out;
 }
 
-function infoErrors(items: readonly TicketInfoItem[], where: string): string[] {
+function infoBlockErrors(b: InfoBlock, where: string): string[] {
     const out: string[] = [];
-    for (const i of items) {
+    const menu = b.display === 'menu';
+    if (!b.items.length) out.push(`${where}: an info block needs at least one button.`);
+    if (b.items.length > (menu ? TICKET_LIMITS.menuOptions : 5)) out.push(`${where}: an info block holds up to ${menu ? TICKET_LIMITS.menuOptions : 5} ${menu ? 'menu entries' : 'buttons'}.`);
+    if (b.placeholder.length > TICKET_LIMITS.placeholder) out.push(`${where}: the info menu’s placeholder is too long.`);
+    for (const i of b.items) {
         const name = `${where}, info button “${i.label || i.emoji || '…'}”`;
-        if (blank(i.label) && (i.placement === 'menu' || blank(i.emoji))) out.push(`${name}: give it a ${i.placement === 'menu' ? 'title' : 'label or emoji'}.`);
-        if (i.label.length > (i.placement === 'menu' ? TICKET_LIMITS.optionLabel : TICKET_LIMITS.label)) out.push(`${name}: the label is too long.`);
+        if (blank(i.label) && (menu || blank(i.emoji))) out.push(`${name}: give it a ${menu ? 'title' : 'label or emoji'}.`);
+        if (i.label.length > (menu ? TICKET_LIMITS.optionLabel : TICKET_LIMITS.label)) out.push(`${name}: the label is too long.`);
         if (i.description.length > TICKET_LIMITS.description) out.push(`${name}: the description is over ${TICKET_LIMITS.description} characters.`);
         if (!i.panelId) out.push(`${name}: choose the info panel it shows.`);
     }
@@ -1321,8 +1343,7 @@ export function validateTicketOption(o: TicketOption): string[] {
         if (it.notice.length > TICKET_LIMITS.notice) out.push(`${name}: the ${TICKET_ACTION_INFO[a].name} message is over ${TICKET_LIMITS.notice} characters.`);
         if (it.delay < 0 || it.delay > TICKET_LIMITS.deleteDelay) out.push(`${name}: Delete waits 0 to ${TICKET_LIMITS.deleteDelay} seconds.`);
     }
-    out.push(...infoErrors(o.controls.info, `${name} controls`));
-    out.push(...slotErrors([...OPEN_ACTIONS.filter((a) => o.controls.items[a].shown).map((a) => o.controls.items[a]), ...o.controls.info], `${name} controls`));
+    out.push(...slotErrors(OPEN_ACTIONS.filter((a) => o.controls.items[a].shown).map((a) => o.controls.items[a].placement), `${name} controls`));
     out.push(...messageErrors(o.welcome, `${name} ticket message`));
     out.push(...messageErrors(o.closed, `${name} closed message`));
     return out;
@@ -1332,10 +1353,9 @@ export function validateTicketPanel(p: TicketPanel): string[] {
     const out: string[] = [];
     if (blank(p.name)) out.push('Give the panel a name.');
     if (!p.options.length) out.push(`“${p.name}”: add at least one ticket option.`);
-    out.push(...slotErrors([...p.options, ...p.info], `“${p.name}”`));
+    out.push(...slotErrors(p.options.map((o) => o.placement), `“${p.name}”`));
     if (p.placeholder.length > TICKET_LIMITS.placeholder) out.push(`“${p.name}”: the menu placeholder is too long.`);
     out.push(...messageErrors(p.message, `“${p.name}”`));
-    out.push(...infoErrors(p.info, `“${p.name}”`));
     for (const o of p.options) out.push(...validateTicketOption(o));
     return out;
 }

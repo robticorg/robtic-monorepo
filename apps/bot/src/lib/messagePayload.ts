@@ -1,5 +1,5 @@
 import type { APIMessageComponentEmoji } from "discord.js";
-import type { MessageDesign, PanelEmbed, TicketButtonStyle } from "@robo/shared";
+import type { InfoBlock, MessageDesign, PanelEmbed, TicketButtonStyle } from "@robo/shared";
 
 // A message designed on the dashboard, as Discord wants it: a classic embed (with optional text above) or a Components
 // V2 container. Its interactive part, the "slot" (the panel's ticket options or a ticket's controls), is passed in as
@@ -78,6 +78,14 @@ export function slotRows(items: readonly SlotItem[], menuId: string, placeholder
     return rows;
 }
 
+/** An info block: a row of buttons (`tk:v:<panel>:<item>`) or one menu (`tk:vm:<block>`, values `v:<panel>:<item>`). */
+export function infoRows(b: InfoBlock): Row[] {
+    const items = b.items.filter((i) => i.panelId);
+    if (!items.length) return [];
+    if (b.display === "menu") return [menuRow(`tk:vm:${b.id}`, b.placeholder, items.map((i) => ({ label: i.label, value: `v:${i.panelId}:${i.id}`, description: i.description, emoji: i.emoji })))];
+    return buttonRows(items.slice(0, 5).map((i) => button(`tk:v:${i.panelId}:${i.id}`, i.label, i.emoji, i.style)));
+}
+
 /** Uploaded pictures (data URLs) become attachments; https links are used as they are. */
 class Files {
     readonly list: { attachment: Buffer; name: string }[] = [];
@@ -120,6 +128,7 @@ export function renderMessage(m: MessageDesign, vars: Vars, slot: Row[], mention
                     : { type: 10, content: fill(b.content, vars) });
             } else if (b.type === "separator") children.push({ type: 14, divider: b.divider, spacing: b.spacing });
             else if (b.type === "slot") children.push(...slot);
+            else if (b.type === "info") children.push(...infoRows(b));
         }
         if (!m.blocks.some((b) => b.type === "slot")) children.push(...slot);
         return {
