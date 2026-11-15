@@ -1,65 +1,14 @@
-import { Interaction, TextChannel } from "discord.js";
-import { InteractionUtils } from "@/lib/interactionUtils";
-import { messages } from "@/lib/messages";
-import { Logger } from "@robo/logger";
-import { channelProps } from "@robo/shared";
-import { row } from "@/Permissions/buttons";
-import { TicketActionServices } from "@/Permissions/roles";
-import { JsonValue } from "@/types";
+import { t } from "@robo/shared";
+import { ticketService } from "..";
+import { closeReasonModal } from "../TicketModalCreate";
+import { askFirst, type ActionFn } from "./manage";
 
-export const closeTicket = async (
-    interaction: Interaction,
-    channelId: string | undefined,
-    services: TicketActionServices
-) => {
-    try {
-        const guild = interaction.guild;
-
-        if (!channelId) {
-            return InteractionUtils.safeReply(interaction, messages.error.ticketNotFound);
-        }
-
-        if (!guild) return;
-
-        const channel = guild.channels.cache.get(channelId);
-        const found = await services.db.find("channel", channelId);
-
-        if (!found || found.status === "CLOSED") {
-            found?.status === "CLOSED" ? 
-                await InteractionUtils.safeReply(interaction, messages.warn.closedTicket) :
-                await InteractionUtils.safeReply(interaction, messages.warn.noOpenTicket);
-            return;
-        }
-
-        const channelData : channelProps | JsonValue = found.panel?.channels ?? null;
-
-        if (!channel || !(channel instanceof TextChannel)) return await InteractionUtils.safeReply(interaction, messages.error.ticketNotFound);
-
-        // await InteractionUtils.safeReply(interaction, messages.success.closed);
-        // Logger.success(`Ticket closed: ${channelId} by ${interaction.user.id}`);
-
-        // await sendTicketLog(
-        //     guild,
-        //     channelData?.logs.close,
-        //     `🔒 Ticket closed by ${interaction.user.tag} — <#${channelId}>`
-        // );
-
-        await channel.permissionOverwrites.edit(interaction.user.id, {
-            ViewChannel: false,
-            SendMessages: false,
-        });
-
-        await services.db.update(found.id, { status: "CLOSED" });
-
-        if (channel.isSendable()) {
-            await channel.send({
-                content: "🔒 This ticket has been closed.",
-                components: [row(["reopen", "delete", "transcript"])],
-            });
-        }
-
-    } catch (err) {
-        Logger.error("[Ticket.close]", err);
-        await InteractionUtils.safeReply(interaction, messages.error.failedCloseTicket);
-    }
+/** Close: "are you sure?" and a reason popup when the option asks for them (a command's argument is its reason). */
+export const closeTicket: ActionFn = async (inv, ctx) => {
+    const locale = ctx.settings.general.language;
+    if (await askFirst(inv, ctx, "close")) return;
+    if (ctx.option?.controls.items.close.reason && inv.args.reason === undefined && inv.showModal) return inv.showModal(closeReasonModal(locale));
+    const r = await ticketService.close(inv.channel, inv.member, ctx, inv.args.reason?.trim() || null);
+    // The closed message is already in the channel: the person only gets a short confirmation.
+    await inv.reply(r.ok ? t(locale, "closed.saved") : r.text);
 };

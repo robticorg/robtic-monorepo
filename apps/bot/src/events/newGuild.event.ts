@@ -1,16 +1,10 @@
-import { Events, Guild } from "discord.js";
-import { GuildService, PermissionService, DefaultPermissions } from "@robo/db";
+import { Events, type Guild } from "discord.js";
 import { Logger } from "@robo/logger";
 
+/** Added to a server: nothing to set up here, everything is designed on the dashboard (Robtic Ticket). */
 export default {
     name: Events.GuildCreate,
     run: async (guild: Guild) => {
-        const guildService = new GuildService();
-        const permService = new PermissionService();
-
-        Logger.info(`📥 Joined guild: ${guild.name} (${guild.id})`);
-
-        await guildService.ensureGuild(guild.id);
-        await permService.seedDefaults(guild.id, DefaultPermissions);
+        Logger.info(`Joined ${guild.name} (${guild.id})`);
     },
 };

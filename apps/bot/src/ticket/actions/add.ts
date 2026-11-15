@@ -1,15 +1,14 @@
-import { Interaction } from "discord.js";
-import { TicketRepository } from "@robo/db";
-import { InteractionUtils } from "@/lib/interactionUtils";
-import { TicketActionServices } from "@/Permissions/roles";
+import { t } from "@robo/shared";
+import { ticketService } from "..";
+import { memberModal } from "../TicketModalCreate";
+import { finish, type ActionFn } from "./manage";
 
-export const addMember = async (
-    interaction: Interaction,
-    channelId: string | undefined,
-    services: TicketActionServices
-) => {
-   await InteractionUtils.safeReply(
-        interaction,
-        "⏳ This action requires additional input. A prompt will follow. test",
-    );
+/** From a button: a popup with a member picker. From a command: the member mentioned. */
+export const addMember: ActionFn = async (inv, ctx) => {
+    const locale = ctx.settings.general.language;
+    if (!inv.args.target) {
+        if (inv.showModal) return inv.showModal(memberModal("add", locale));
+        return inv.reply(t(locale, "cmd.usage", { usage: `${ctx.settings.general.prefix}add @member` }));
+    }
+    await finish(inv, await ticketService.add(inv.channel, inv.member, ctx, inv.args.target));
 };

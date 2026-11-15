@@ -1,24 +1,10 @@
 {
     "name": "@robo/shared",
     "type": "module",
-    "module": "dist/main.js",
-    "main": "dist/main.js",
-    "types": "dist/main.d.ts",
-    "scripts": {
-        "build": "bun run build:js && bun run build:types",
-        "build:js": "bun build ./src/main.ts --outdir ./dist --target bun --format esm",
-        "build:types": "tsc -p tsconfig.json --emitDeclarationOnly",
-        "dev": "bun run build:js --watch"
-    },
-    "devDependencies": {
-        "@types/bun": "latest",
-        "typescript": "^5.5.0"
-    },
+    "private": true,
+    "main": "src/main.ts",
+    "types": "src/main.ts",
     "exports": {
-        ".": {
-            "types": "./dist/main.d.ts",
-            "import": "./dist/main.js",
-            "default": "./dist/main.js"
-        }
+        ".": "./src/main.ts"
     }
 }

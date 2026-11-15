@@ -1,19 +1,50 @@
-import { Interaction } from "discord.js";
-import { Managed } from "@/ticket/TicketEmbed"; 
-import { row } from "@/Permissions/buttons";
-import { TicketActionServices } from "@/Permissions/roles";
+import type { APIModalInteractionResponseCallbackData, GuildMember, TextChannel } from "discord.js";
+import { t, type TicketAction } from "@robo/shared";
+import { check, type Result } from "..";
+import type { TicketContext } from "../types";
+import { contextOf } from "../utils";
 
-export const manageTicket = async (
-    interaction: Interaction,
-    channelId: string | undefined,
-    services: TicketActionServices
-) => {
-    // Only works if interaction is repliable (ButtonInteraction)
-    if (interaction.isRepliable()) {
-        await interaction.reply({
-            embeds: [Managed()],
-            components: [row(["add", "remove", "claim", "rename", "transfer"])],
-            ephemeral: true 
-        });
-    }
-};
+// One control, however it was asked for: a button, the controls menu, a slash command or a typed command. Each action
+// file gets the same "invocation": who, where, how to answer, and (for commands) its arguments. Buttons ask for what
+// they need with a popup (rename, close reason, the member to add / remove / hand over) and, when the option says so,
+// an "are you sure?" first (Close, Delete).
+
+export interface Invocation {
+    channel: TextChannel;
+    member: GuildMember;
+    /** Answers the person (privately for buttons and slash commands, in the channel for typed commands). */
+    reply: (text: string, files?: Result["files"]) => Promise<void>;
+    /** Posts in the ticket for everyone (what changed). */
+    announce: (text: string) => Promise<void>;
+    /** Buttons and menus can open a popup; commands cannot. */
+    showModal?: (modal: APIModalInteractionResponseCallbackData) => Promise<void>;
+    /** Buttons and menus can ask "are you sure?" with a Yes button. */
+    confirm?: (action: TicketAction, question: string) => Promise<void>;
+    args: { reason?: string | null; name?: string | null; target?: GuildMember | null; confirmed?: boolean };
+}
+
+export type ActionFn = (inv: Invocation, ctx: TicketContext) => Promise<void>;
+
+/** Answers with the result: in the channel when something changed for everyone, else only to the person. */
+export async function finish(inv: Invocation, r: Result) {
+    if (r.ok) {
+        if (r.text) await inv.announce(r.text);
+        await inv.reply("✅", r.files);
+    } else await inv.reply(r.text, r.files);
+}
+
+/** Asks first when the option wants a confirmation and this came from a button (commands are deliberate already). */
+export async function askFirst(inv: Invocation, ctx: TicketContext, action: "close" | "delete"): Promise<boolean> {
+    if (inv.args.confirmed || !inv.confirm || !ctx.option?.controls.items[action].confirm) return false;
+    await inv.confirm(action, t(ctx.settings.general.language, action === "close" ? "confirm.close" : "confirm.delete"));
+    return true;
+}
+
+/** Runs a control in a ticket channel after the shared checks (who may, and the state allows it). */
+export async function runControl(action: TicketAction, inv: Invocation, actions: Record<TicketAction, ActionFn>) {
+    const ctx = await contextOf(inv.channel.guild.id, inv.channel.id);
+    if (!ctx) return inv.reply(t("en", "notTicket"));
+    const denied = check(inv.member, ctx, action);
+    if (denied) return inv.reply(denied.text);
+    await actions[action](inv, ctx);
+}

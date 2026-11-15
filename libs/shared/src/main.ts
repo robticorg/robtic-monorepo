@@ -1,34 +1,7 @@
-// --- utils ---
+// @robo/shared: what every part of Robtic Ticket agrees on. The settings (written by the dashboard, read by the bot),
+// the transcript shapes, the bot's words in English and Arabic, and the logger's types.
 
-// --- data types ---
-import type { EmbedData, Field, channelProps, LogsChannelProps } from "./types/discord";
-import type { AccessType, ticketBy, TicketStatus, StatusPermissionMap, PermissionProps } from "./types/ticket";
-
-// --- database type
-import type { PanelProps, TicketProps, TicketUpdate, FormDataProps } from "./types/prisma";
-
-// --- logger type
-import type { LogLevel, LoggerConfig, DatabaseLogType } from "./types/logger";
-
-export {
-    // --- types :
-    EmbedData,
-    Field,
-    channelProps,
-    LogsChannelProps,
-    AccessType,
-    ticketBy,
-    TicketStatus,
-    StatusPermissionMap,
-    PermissionProps,
-
-    // --- database :
-    PanelProps, TicketProps, TicketUpdate, FormDataProps,
-
-    // --- logger :
-    LogLevel,
-    LoggerConfig,
-    DatabaseLogType,
-
-    // --- utils :
-}
+export * from './settings';
+export * from './transcript';
+export * from './i18n';
+export type { LogLevel, LoggerConfig, DatabaseLogType } from './types/logger';
