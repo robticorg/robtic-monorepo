@@ -9,9 +9,19 @@ function required(key: string): string {
     return value;
 }
 
+/** The bot's application id inside its token (the first part is the bot user's id, base64). */
+function idFromToken(token: string): string {
+    const id = Buffer.from(token.split('.')[0] ?? '', 'base64').toString('utf8');
+    if (!/^\d{15,22}$/.test(id)) throw new Error('Missing required environment variable: DISCORD_CLIENT_ID');
+    return id;
+}
+
+const token = required('DISCORD_TOKEN');
+
 export const env = {
-    token: required('DISCORD_TOKEN'),
-    clientId: required('DISCORD_CLIENT_ID'),
+    token,
+    /** DISCORD_CLIENT_ID, or the id inside the token when it isn't set. */
+    clientId: str('DISCORD_CLIENT_ID') || idFromToken(token),
     /** Development: slash commands are registered on this server only (instant). Unset: globally. */
     devGuildId: str('DISCORD_GUILD_ID') || null,
     mongoUri: str('MONGODB_URI', str('MONGO_URI', 'mongodb://127.0.0.1:27017/robtic-ticket')),
