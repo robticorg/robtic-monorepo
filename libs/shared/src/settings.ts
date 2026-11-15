@@ -37,6 +37,9 @@ export const validateProfile = (_p: BotProfile): string[] => [];
 //
 // The bot keeps a copy of these types (Public Ticket libs/shared/src/settings.ts). Change both together.
 
+
+/** A deep copy of plain JSON data (settings are JSON; structuredClone isn't in this library's lib). */
+const cloneJson = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 export const TICKET_LIMITS = {
     /** No real cap on panels or options a server makes; these only keep one document sane. */
     panels: 50,
@@ -386,6 +389,9 @@ export interface TicketGeneral extends TicketPlaces {
     blacklistRoleIds: Snowflake[];
     /** Tickets are numbered from here. */
     nextNumber: number;
+    /** Robtic Staff points for the staff member who claims a ticket (sent to Robtic Staff's points API; needs Robtic
+     *  Staff in the server, and only counts for its staff). */
+    staffPoints: { enabled: boolean; perClaim: number };
 }
 
 /* ------------------------------------------------------------------ !come */
@@ -474,7 +480,22 @@ export interface TicketTranscriptSummary {
     closedAt: string;
     /** The viewer's address. */
     url: string;
+    /** Anyone with the link may open it (a server administrator turned this on). Otherwise: the server's
+     *  administrators, and the ticket's owner when the server sends owners their transcript. */
+    public: boolean;
 }
+
+/** One transcript for the transcript page, after the access check (GET /discord/api/ticket/transcript/:id). */
+export interface TranscriptView {
+    /** The transcript document the page renders; null in local mock mode (the page then shows its own sample). */
+    doc: unknown | null;
+    public: boolean;
+    /** The viewer is an administrator of the transcript's server (or a Robtic super user): may make it public. */
+    canShare: boolean;
+}
+
+/** A transcript's public id, as the bot makes them. */
+export const TRANSCRIPT_ID = /^[A-Za-z0-9_]{1,64}$/;
 
 export interface TranscriptFilter {
     /** Words in the channel name, the option, the number or a name. */
@@ -684,7 +705,7 @@ export const newMessageBlock = (kind: MessageBlockKind): MessageBlock => {
 };
 
 export const defaultTicketSettings = (): TicketSettings => ({
-    general: { language: 'en', prefix: '!', ...noPlaces(), transcriptToOwner: true, blacklistRoleIds: [], nextNumber: 1 },
+    general: { language: 'en', prefix: '!', ...noPlaces(), transcriptToOwner: true, blacklistRoleIds: [], nextNumber: 1, staffPoints: { enabled: true, perClaim: 1 } },
     panels: [],
     come: defaultCome(),
     commands: defaultCommands(),
@@ -711,7 +732,7 @@ function normalizePermissions(x: unknown): TicketPermissions {
     if (!p.targets) return d;
     const open = normalizeSet(p, d.open);
     const shut: PermOverwrite = p.closedOwner === 'hidden' ? { ViewChannel: 'deny' } : { ...VIEW_ONLY };
-    return { open, closed: { targets: { ...structuredClone(open.targets), owner: shut, added: shut }, roles: structuredClone(open.roles) } };
+    return { open, closed: { targets: { ...cloneJson(open.targets), owner: shut, added: shut }, roles: cloneJson(open.roles) } };
 }
 
 function normalizeControls(x: unknown, askReason: boolean): TicketControls {
@@ -788,7 +809,7 @@ export function normalizeTicketSettings(raw: unknown): TicketSettings {
     const come = obj(r.come);
     const commands = obj(r.commands);
     return {
-        general: { ...d.general, ...(general as Partial<TicketGeneral>), blacklistRoleIds: arr(g.blacklistRoleIds) },
+        general: { ...d.general, ...(general as Partial<TicketGeneral>), blacklistRoleIds: arr(g.blacklistRoleIds), staffPoints: { ...d.general.staffPoints, ...obj(g.staffPoints) } as TicketGeneral['staffPoints'] },
         panels: arr(r.panels).map((p) => normalizePanel(p, askReason)),
         come: { ...d.come, ...(come as Partial<TicketCome>), roleIds: arr(come.roleIds), button: { ...d.come.button, ...obj(come.button) } },
         commands: Object.fromEntries(TICKET_COMMANDS.map((c) => [c, { enabled: obj(commands[c]).enabled !== false, aliases: arr<string>(obj(commands[c]).aliases) }])) as TicketSettings['commands'],
@@ -871,7 +892,7 @@ export function overwriteBits(o: PermOverwrite): { allow: string; deny: string }
 /** A template's panel as a new panel on `guildId`: fresh ids, never posted; another server's channels and roles dropped. */
 export function panelFromTemplate(t: Pick<TicketTemplate, 'panel' | 'guildId' | 'name'>, guildId: string): TicketPanel {
     const same = t.guildId === guildId;
-    const p = structuredClone(t.panel);
+    const p = cloneJson(t.panel);
     const clearPlaces = <T extends TicketPlaces>(x: T): T => (same ? x : { ...x, ...noPlaces() });
     return {
         ...clearPlaces(p),
@@ -970,6 +991,8 @@ export function validateTicketSection(section: TicketSectionKey, value: unknown)
         if (g.language !== 'en' && g.language !== 'ar') out.push('Pick English or Arabic.');
         if (blank(g.prefix) || g.prefix.length > TICKET_LIMITS.prefix || /\s/.test(g.prefix)) out.push(`The prefix is 1 to ${TICKET_LIMITS.prefix} characters, no spaces.`);
         if (!Number.isInteger(g.nextNumber) || g.nextNumber < 1) out.push('Ticket numbers start at 1 or more.');
+        const sp = g.staffPoints;
+        if (!sp || typeof sp.enabled !== 'boolean' || !Number.isInteger(sp.perClaim) || sp.perClaim < 1 || sp.perClaim > 100) out.push('Staff points for a claim are 1 to 100.');
         return out;
     }
     if (section === 'profile') return validateProfile(value as BotProfile);

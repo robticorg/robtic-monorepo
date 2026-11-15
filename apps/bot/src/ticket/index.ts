@@ -8,6 +8,7 @@ import { channelSlug, TicketDiscordAdapter } from "./TicketDiscordAdapter";
 import { answersPayload, closedPayload, comePayload, noticeText, ticketVars, varsOf, welcomePayload } from "./TicketEmbed";
 import { TicketStateMachine } from "./TicketState";
 import { archiveTicket } from "./transcript/archive";
+import { sendClaimPoints } from "./staffPoints";
 import type { TicketContext } from "./types";
 import { overLimit } from "./utils";
 
@@ -135,6 +136,8 @@ export class TicketServices {
         if (claimerId) await repo.addParticipant(channel.id, member.id, "claimer");
         await refreshPermissions(channel, { ...ctx, ticket: updated ?? ctx.ticket });
         if (claimerId) await audit.log(channel.guild, placesOf(ctx).logChannelId, "log.claimed", { user: mention(member.id), channel: `<#${channel.id}>` });
+        // Robtic Staff link: points for the claim (in the background; the claim never waits for it).
+        if (claimerId) void sendClaimPoints(ctx.settings, channel.guild.id, member.id, { channelId: channel.id, number: ctx.ticket.number });
         return ok(noticeText(ctx, "claim", await varsOf(channel.guild, ctx), { staff: mention(member.id) }, claimerId ? undefined : "unclaimed"));
     }
 
