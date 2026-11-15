@@ -27,6 +27,7 @@ export default defineConfig({
     base: `${BASE}/`,
     esbuild: { jsx: 'automatic' },
     plugins: [api()],
-    server: { port: Number(process.env.TRANSCRIPT_PORT ?? 5180), strictPort: true },
+    // The access check lives in the dashboard (robtic-discord `bun run dev` on :5173).
+    server: { port: Number(process.env.TRANSCRIPT_PORT ?? 5180), strictPort: true, proxy: { '/discord/api': 'http://localhost:5173' } },
     build: { outDir: 'dist', emptyOutDir: true },
 });
