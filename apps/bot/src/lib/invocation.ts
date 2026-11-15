@@ -30,11 +30,16 @@ export function fromInteraction(i: Component, args: Invocation["args"] = {}): In
         member: i.member as GuildMember,
         args,
         reply: (text, files) => say(i, text, files),
-        announce: async (text) => { await channel.send({ content: text, allowedMentions: { parse: [] } }).catch(() => null); },
+        announce: async (msg) => { await channel.send((typeof msg === "string" ? { content: msg, allowedMentions: { parse: [] } } : msg) as never).catch(() => null); },
         showModal: fresh && !i.isModalSubmit() ? (modal) => i.showModal(modal) : undefined,
         confirm: fromComponent && fresh ? async (action, question) => {
             const locale = (await settings.get(channel.guild.id)).general.language;
-            await i.reply({ content: question, components: [confirmRow(action, locale)] as never, flags: MessageFlags.Ephemeral }).catch(() => say(i, question));
+            if (typeof question === "string") {
+                await i.reply({ content: question, components: [confirmRow(action, locale)] as never, flags: MessageFlags.Ephemeral }).catch(() => say(i, question));
+                return;
+            }
+            // A designed confirmation: its message, with the Yes button under it.
+            await i.reply({ ...question, components: [...question.components, confirmRow(action, locale)], flags: (question.flags ?? 0) | MessageFlags.Ephemeral } as never).catch(() => say(i, "?"));
         } : undefined,
     };
 }
@@ -46,6 +51,6 @@ export function fromMessage(message: Message<true>, args: Invocation["args"]): I
         member: message.member as GuildMember,
         args,
         reply: async (text, files) => { await message.reply({ content: text, files, allowedMentions: { parse: [], repliedUser: false } }).catch(() => null); },
-        announce: async (text) => { await channel.send({ content: text, allowedMentions: { parse: [] } }).catch(() => null); },
+        announce: async (msg) => { await channel.send((typeof msg === "string" ? { content: msg, allowedMentions: { parse: [] } } : msg) as never).catch(() => null); },
     };
 }

@@ -13,6 +13,7 @@ import { transferTicket } from "./transfer";
 export { closeTicket, reopenTicket, deleteTicket, claimTicket, addMember, removeMember, renameTicket, transferTicket, transcriptTicket };
 export { runControl, type Invocation, type ActionFn } from "./manage";
 export { runCome } from "./come";
+export { runSleep } from "./sleep";
 
 /** Every control's implementation, by action. */
 export const ACTIONS: Record<TicketAction, ActionFn> = {

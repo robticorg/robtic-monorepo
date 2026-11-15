@@ -3,9 +3,10 @@ import type { Guild } from "discord.js";
 import env from "@robo/config";
 import { Logger } from "@robo/logger";
 import { SettingsRepository, TicketRepository, TranscriptRepository, type TranscriptMessageDoc } from "@robo/db";
-import { resolvePlaces, t, TRANSCRIPT_FORMAT, type TicketTranscriptDocument, type TranscriptMessageView, type TranscriptUser } from "@robo/shared";
+import { resolvePlaces, t, TRANSCRIPT_FORMAT, type TicketTranscriptDocument, type TranscriptMessage, type TranscriptMessageView, type TranscriptUser } from "@robo/shared";
 import { exportFilename, transcriptHtml } from "@robo/transcript/html";
 import { keepPictures } from "./r2";
+import { renderMessage, type Row } from "@/lib/messagePayload";
 
 // A ticket's transcript: every captured message folded into one self-contained document (Credora's archive builder,
 // adapted to tickets), saved under an unguessable id, then sent where the server wants it: the transcript channel, the
@@ -127,6 +128,18 @@ export async function buildDocument(guild: Guild, channelId: string, transcriptI
  * Saves the ticket's transcript (a new version each time; the same id for the same ticket) and, with `post`, sends it to
  * the transcript channel and the owner. Returns its id, link and the file to attach.
  */
+/** A transcript message as the dashboard set it: text or a design, the HTML file if wanted, a link button if wanted. */
+function transcriptMessage(m: TranscriptMessage, vars: Record<string, string>, url: string | null, file: { attachment: Buffer; name: string }) {
+    const button: Row[] = m.button.show && url ? [{ type: 1, components: [{ type: 2, style: 5, url, ...(m.button.label.trim() ? { label: m.button.label.trim().slice(0, 80) } : {}), ...(m.button.emoji.trim() ? { emoji: { name: m.button.emoji.trim() } } : {}) }] }] : [];
+    const files = m.attachFile ? [file] : [];
+    if (m.style === "text") {
+        const content = m.text.replace(/\{(\w+)\}/g, (x, k: string) => vars[k] ?? x).slice(0, 2000) || " ";
+        return { content, components: button, files, allowedMentions: { parse: [] } };
+    }
+    const p = renderMessage(m.design, vars, button, { users: [], roles: [] });
+    return { ...p, files: [...(p.files ?? []), ...files] };
+}
+
 export async function archiveTicket(guild: Guild, channelId: string, { post }: { post: boolean }) {
     const ticket = await tickets.byChannel(channelId);
     if (!ticket) return null;
@@ -152,19 +165,18 @@ export async function archiveTicket(guild: Guild, channelId: string, { post }: {
 
     if (post) {
         const s = await settings.get(guild.id);
-        const locale = s.general.language;
-        const line = url ? t(locale, "transcript.ready", { channel: ticket.channelName, link: url }) : t(locale, "transcript.file", { channel: ticket.channelName });
-        // The ticket option's transcript channel, else its panel's, else the server's.
+        const vars = { number: String(ticket.number).padStart(4, "0"), channel: ticket.channelName, server: guild.name, link: url ?? "" };
+        // The ticket's panel's transcript channel, else the server's.
         const panel = s.panels.find((p) => p.id === ticket.panelId);
         const option = panel?.options.find((o) => o.id === ticket.optionId);
         const target = panel && option ? resolvePlaces(s.general, panel, option).transcriptChannelId : s.general.transcriptChannelId;
         if (target) {
             const ch = guild.channels.cache.get(target) ?? (await guild.channels.fetch(target).catch(() => null));
-            if (ch?.isSendable()) await ch.send({ content: line, files: [file], allowedMentions: { parse: [] } }).catch((e) => Logger.warn(`[transcript] channel post: ${e}`));
+            if (ch?.isSendable()) await ch.send(transcriptMessage(s.general.transcriptPost, vars, url, file) as never).catch((e) => Logger.warn(`[transcript] channel post: ${e}`));
         }
         if (s.general.transcriptToOwner) {
             const user = await guild.client.users.fetch(ticket.ownerId).catch(() => null);
-            await user?.send({ content: t(locale, "dm.transcript", { channel: ticket.channelName, server: guild.name, link: url ?? "📎" }), files: [file] }).catch(() => null);
+            await user?.send(transcriptMessage(s.general.dmTranscript, vars, url, file) as never).catch(() => null);
         }
     }
     return { id, url, file };

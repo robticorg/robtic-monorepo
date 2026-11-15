@@ -1,5 +1,5 @@
 import type { Guild, GuildMember } from "discord.js";
-import { t, type Locale, type MessageKey, type TicketAction, type TicketCome, type TicketOption, type TicketPanel } from "@robo/shared";
+import { t, type Locale, type MessageKey, type TicketAction, type TicketCome, type TicketOption, type TicketPanel, type TicketSleep } from "@robo/shared";
 import { button, emojiOf, fill, renderMessage, slotRows, type Payload, type Row, type SlotItem, type Vars } from "@/lib/messagePayload";
 import { controlRows } from "@/Permissions/buttons";
 import { IDS, type TicketContext } from "./types";
@@ -8,15 +8,31 @@ import { IDS, type TicketContext } from "./types";
 // the form answers, the closed message (with Reopen / Transcript / Delete), the !come direct message, and the one-line
 // notices after a control (the dashboard's text, or the built-in line in the server's language).
 
+/** A panel: all its ticket options as buttons (with its info buttons beside them), or all in one menu. */
 export function panelPayload(panel: TicketPanel, guild: Guild): Payload {
+    const place = panel.display === "menu" ? "menu" as const : "button" as const;
     const items: SlotItem[] = [
         ...panel.options.map((o): SlotItem => ({
-            placement: o.placement,
+            placement: place,
             button: button(IDS.open(panel.id, o.id), o.label, o.emoji, o.style),
             option: { label: o.label, value: o.id, description: o.description, emoji: o.emoji },
         })),
+        ...(place === "button" ? panel.infoButtons.filter((i) => i.panelId).map((i): SlotItem => ({
+            placement: "button",
+            button: button(IDS.info(i.panelId, i.id), i.label, i.emoji, i.style),
+            option: { label: i.label, value: IDS.infoValue(i.panelId, i.id), emoji: i.emoji },
+        })) : []),
     ];
     return renderMessage(panel.message, { server: guild.name }, slotRows(items, IDS.menu(panel.id), panel.placeholder));
+}
+
+/** Sleep's two messages: in the ticket (pings the owner), and the direct message with a link back to the ticket. */
+export function sleepPayloads(z: TicketSleep, vars: Vars, url: string, ownerId: string): { inTicket: Payload; dm: Payload } {
+    const link: Row = { type: 1, components: [{ type: 2, style: 5, url, label: "Go to the ticket", emoji: { name: "🎫" } }] };
+    return {
+        inTicket: renderMessage(z.ticketMessage, vars, [], { users: [ownerId], roles: [] }),
+        dm: renderMessage(z.dmMessage, vars, [link], { users: [], roles: [] }),
+    };
 }
 
 export function ticketVars(guild: Guild, owner: GuildMember | { id: string; displayName: string }, option: Pick<TicketOption, "label" | "supportRoleIds">, number: number, channelId?: string): Vars {
