@@ -13,7 +13,8 @@
         "@robo/transcript": "workspace:*",
         "lucide-react": "0.468.0",
         "react": "19.2.3",
-        "react-dom": "19.2.3"
+        "react-dom": "19.2.3",
+        "@robo/config": "workspace:*"
     },
     "devDependencies": {
         "@types/react": "19.2.15",

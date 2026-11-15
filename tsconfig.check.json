@@ -26,6 +26,7 @@
         "apps/bot/tests",
         "apps/transcript/src",
         "apps/transcript/server.ts",
+        "apps/transcript/base.ts",
         "libs/shared/src",
         "libs/logger/src",
         "libs/config/src",

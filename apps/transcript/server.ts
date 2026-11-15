@@ -1,29 +1,36 @@
+// Settings from the admin console (the bot's database) before the transcript source reads MONGODB_URI.
+import '@robo/config/remote';
 import { join } from 'node:path';
+import { BASE } from './base';
 import { findTranscript } from './src/source';
 
-// Production: the built page (dist/, from `bun run build`) and the transcript API, on one port. Put it behind the proxy
-// at the address TRANSCRIPT_BASE_URL points to (the bot links there).
+// Production: the built page (dist/, from `bun run build` with the same TRANSCRIPT_BASE_PATH) and the transcript API,
+// on one port. The proxy sends robtic.org<BASE>/ here unchanged; the bot links to TRANSCRIPT_BASE_URL/<id>.
 
 const PORT = Number(process.env.TRANSCRIPT_PORT ?? 5180);
 const DIST = join(import.meta.dir, 'dist');
+const ID = /^[A-Za-z0-9_]+$/;
 const page = () => new Response(Bun.file(join(DIST, 'index.html')), { headers: { 'content-type': 'text/html; charset=utf-8', 'x-robots-tag': 'noindex' } });
 
 Bun.serve({
     port: PORT,
     async fetch(req) {
         const { pathname } = new URL(req.url);
-        const api = /^\/api\/transcripts\/([A-Za-z0-9_]+)$/.exec(pathname);
-        if (api) {
-            const doc = await findTranscript(api[1]!).catch(() => null);
-            return Response.json(doc ?? { error: 'not_found' }, { status: doc ? 200 : 404, headers: { 'cache-control': 'private, max-age=60' } });
+        if (pathname === '/health') return Response.json({ ok: true });
+        if (!pathname.startsWith(`${BASE}/`)) return new Response('Not found', { status: 404 });
+        const rest = pathname.slice(BASE.length + 1);
+        if (rest.startsWith('api/')) {
+            const id = rest.slice(4);
+            const doc = ID.test(id) ? await findTranscript(id).catch(() => null) : null;
+            return Response.json(doc ?? { error: 'not_found' }, { status: doc ? 200 : 404, headers: { 'cache-control': 'private, max-age=60', 'x-robots-tag': 'noindex' } });
         }
-        if (pathname.startsWith('/assets/')) {
-            const file = Bun.file(join(DIST, pathname));
+        if (rest.startsWith('assets/') && !rest.includes('..')) {
+            const file = Bun.file(join(DIST, rest));
             if (await file.exists()) return new Response(file, { headers: { 'cache-control': 'public, max-age=31536000, immutable' } });
         }
-        if (pathname.startsWith('/transcript/')) return page();
+        if (ID.test(rest.replace(/\/$/, ''))) return page();
         return new Response('Not found', { status: 404 });
     },
 });
 
-console.log(`[transcript] http://localhost:${PORT}/transcript/tr_showcase`);
+console.log(`[transcript] http://localhost:${PORT}${BASE}/tr_showcase`);

@@ -11,7 +11,7 @@ type Result = { status: 'ok'; doc: TicketTranscriptDocument } | { status: 'not_f
 async function load(id: string): Promise<Result> {
     if (!id) return { status: 'not_found' };
     try {
-        const res = await fetch(`/api/transcripts/${encodeURIComponent(id)}`, { headers: { accept: 'application/json' } });
+        const res = await fetch(`${(import.meta.env?.BASE_URL ?? "/")}api/${encodeURIComponent(id)}`, { headers: { accept: 'application/json' } });
         if (res.status === 404) return { status: 'not_found' };
         if (!res.ok) return { status: 'error' };
         return { status: 'ok', doc: (await res.json()) as TicketTranscriptDocument };

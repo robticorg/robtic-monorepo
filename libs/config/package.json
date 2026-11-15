@@ -6,9 +6,11 @@
     "types": "src/env.ts",
     "exports": {
         ".": "./src/env.ts",
-        "./env": "./src/env.ts"
+        "./env": "./src/env.ts",
+        "./remote": "./src/remote-config.ts"
     },
     "dependencies": {
-        "@robo/logger": "workspace:*"
+        "@robo/logger": "workspace:*",
+        "mongoose": "8.19.1"
     }
 }

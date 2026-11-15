@@ -18,7 +18,7 @@ const ALPHABET = "abcdefghijkmnopqrstuvwxyz23456789";
 /** `tr_` + 32 characters from a 33-letter alphabet without look-alikes: about 160 bits. */
 export const newTranscriptId = () => `tr_${[...randomBytes(32)].map((b) => ALPHABET[b % ALPHABET.length]).join("")}`;
 
-export const transcriptUrl = (id: string) => (env.transcriptBaseUrl ? `${env.transcriptBaseUrl}/transcript/${id}` : null);
+export const transcriptUrl = (id: string) => (env.transcriptBaseUrl ? `${env.transcriptBaseUrl}/${id}` : null);
 
 const iso = (d: Date | string | null | undefined) => (d ? new Date(d).toISOString() : null);
 

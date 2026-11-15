@@ -95,6 +95,7 @@
     "apps/transcript": {
       "name": "@robo/transcript-web",
       "dependencies": {
+        "@robo/config": "workspace:*",
         "@robo/db": "workspace:*",
         "@robo/shared": "workspace:*",
         "@robo/transcript": "workspace:*",
@@ -112,6 +113,7 @@
       "name": "@robo/config",
       "dependencies": {
         "@robo/logger": "workspace:*",
+        "mongoose": "8.19.1",
       },
     },
     "libs/database": {
