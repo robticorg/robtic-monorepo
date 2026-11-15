@@ -1,0 +1,42 @@
+{
+    "extends": "./tsconfig.base.json",
+    "compilerOptions": {
+        "noEmit": true,
+        "jsx": "react-jsx",
+        "types": [
+            "bun"
+        ],
+        "lib": [
+            "ES2022",
+            "DOM",
+            "DOM.Iterable"
+        ],
+        "declaration": false,
+        "declarationMap": false,
+        "sourceMap": false,
+        "baseUrl": ".",
+        "paths": {
+            "@/*": [
+                "apps/bot/src/*"
+            ]
+        }
+    },
+    "include": [
+        "apps/bot/src",
+        "apps/bot/tests",
+        "apps/transcript/src",
+        "apps/transcript/server.ts",
+        "apps/transcript/base.ts",
+        "libs/shared/src",
+        "libs/logger/src",
+        "libs/config/src",
+        "libs/database/src/db.ts",
+        "libs/database/src/models",
+        "libs/database/src/repositories",
+        "libs/transcript/src"
+    ],
+    "exclude": [
+        "**/dist",
+        "**/node_modules"
+    ]
+}

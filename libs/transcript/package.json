@@ -1,0 +1,18 @@
+{
+    "name": "@robo/transcript",
+    "type": "module",
+    "private": true,
+    "main": "src/index.ts",
+    "types": "src/index.ts",
+    "exports": { ".": "./src/index.ts", "./html": "./src/html.tsx", "./styles.css": "./src/styles.css" },
+    "dependencies": {
+        "@robo/shared": "workspace:*",
+        "lucide-react": "0.468.0",
+        "react": "19.2.3",
+        "react-dom": "19.2.3"
+    },
+    "devDependencies": {
+        "@types/react": "19.2.15",
+        "@types/react-dom": "19.2.3"
+    }
+}

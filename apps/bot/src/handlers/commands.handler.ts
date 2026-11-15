@@ -1,66 +1,31 @@
 import path from "path";
-
-import client from "@/lib/Client";
-
+import { REST, Routes } from "discord.js";
 import env from "@robo/config";
 import { Logger } from "@robo/logger";
-
-import { REST, Routes } from "discord.js";
-
+import client from "@/lib/Client";
 import { Loader } from "@/utils/loader";
 
-const loader = new Loader("src");
+// Slash commands: every *.command.ts under src, registered on the development server (instant) when DISCORD_GUILD_ID
+// is set, globally otherwise.
+
+const loader = new Loader(path.join(import.meta.dir, ".."));
 
 export async function loadCommands() {
     await loader.scan(async (filePath) => {
-        const isCommandFile =
-            filePath.endsWith(".command.ts") ||
-            filePath.endsWith(".command.js");
-
-        if (!isCommandFile) return;
-
+        if (!filePath.endsWith(".command.ts") && !filePath.endsWith(".command.js")) return;
         const command = (await import(path.resolve(filePath))).default;
-
-        if (!command?.data || !command?.run) {
-            throw new Error(
-                `The command at ${filePath} is missing required properties.`
-            );
-        }
-
+        if (!command?.data || !command?.run) throw new Error(`The command at ${filePath} is missing data or run.`);
         client.commands.set(command.data.name, command);
     }, "COMMAND");
 }
 
 export async function registerCommands() {
-    const rest = new REST({ version: "10" }).setToken(
-        env.token.value!
-    );
-
+    const rest = new REST({ version: "10" }).setToken(env.token);
     try {
-        Logger.debug(
-            `Started refreshing ${client.commands.size} application (/) commands.`
-        );
-
-        const route =
-            process.env.NODE_ENV === "dev"
-                ? Routes.applicationGuildCommands(
-                      env.clientId.value!,
-                      env.guildId.value!
-                  )
-                : Routes.applicationCommands(
-                      env.clientId.value!
-                  );
-
-        const data = (await rest.put(route, {
-            body: client.commands.map((cmd) =>
-                cmd.data.toJSON()
-            ),
-        })) as [];
-
-        Logger.debug(
-            `Successfully reloaded ${data.length} application (/) commands.`
-        );
+        const route = env.devGuildId ? Routes.applicationGuildCommands(env.clientId, env.devGuildId) : Routes.applicationCommands(env.clientId);
+        const data = (await rest.put(route, { body: client.commands.map((cmd) => cmd.data.toJSON()) })) as unknown[];
+        Logger.info(`Registered ${data.length} slash command(s) ${env.devGuildId ? `on ${env.devGuildId}` : "globally"}.`);
     } catch (error) {
-        Logger.error(String(error));
+        Logger.error("Registering slash commands failed", error);
     }
 }

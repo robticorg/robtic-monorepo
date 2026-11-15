@@ -1,25 +1,5 @@
-import client from "lib/Client";
-import "dotenv/config";
-import { initLogger, Logger } from "@robo/logger";
+// Entry point. Settings from the admin console (token, database, every variable) are loaded first, and only then is the
+// bot itself imported: a static import would read the environment before they arrive. See libs/config/src/remote-config.ts.
+import "@robo/config/remote";
 
-import env from "@robo/config";
-
-import { Collection } from "discord.js";
-import type { CommandType } from "@/types";
-
-client.commands = new Collection<string, CommandType>();
-
-import "@/handlers/events.handler";
-import { loadCommands, registerCommands } from "./handlers/commands.handler";
-
-await loadCommands();
-await registerCommands();
-
-initLogger({
-    level: "debug",
-    json: false,
-});
-
-await client.login(env.token.value).then(() => {
-    Logger.debug("✅ Bot was started");
-})
+await import("./main");

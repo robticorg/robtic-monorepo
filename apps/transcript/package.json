@@ -1,0 +1,24 @@
+{
+    "name": "@robo/transcript-web",
+    "type": "module",
+    "private": true,
+    "scripts": {
+        "dev": "bunx --bun vite --config vite.config.ts",
+        "build": "bunx --bun vite build --config vite.config.ts",
+        "start": "bun server.ts"
+    },
+    "dependencies": {
+        "@robo/db": "workspace:*",
+        "@robo/shared": "workspace:*",
+        "@robo/transcript": "workspace:*",
+        "lucide-react": "0.468.0",
+        "react": "19.2.3",
+        "react-dom": "19.2.3",
+        "@robo/config": "workspace:*"
+    },
+    "devDependencies": {
+        "@types/react": "19.2.15",
+        "@types/react-dom": "19.2.3",
+        "vite": "5.4.11"
+    }
+}

@@ -1,2 +1,0 @@
--- AlterTable
-ALTER TABLE "Panel" ALTER COLUMN "type" SET DEFAULT 'BUTTON';

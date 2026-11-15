@@ -1,38 +1,17 @@
-import { PrismaClient } from "../generated/prisma";
-import { withAccelerate } from "@prisma/extension-accelerate";
+import mongoose from 'mongoose';
+import { Logger } from '@robo/logger';
 
-const prisma =
-    new PrismaClient({
-        log: ["error", "warn"],
-    }).$extends(withAccelerate())
+// @robo/db: Robtic Ticket's MongoDB (mongoose 8: mongoose 9's bson crashes on Bun 1.3). One connection per process.
 
-// --- Services Exports ---
-import { GuildService } from "./services/guild.repository";
-import { TicketRepository } from "./services/ticket.repository";
-import { PanelService } from "./services/panel.repository";
-import { FormService } from "./services/form.repository";
-import { PermissionService } from "./services/permission.repository";
+export async function connectDatabase(uri: string): Promise<void> {
+    mongoose.set('strictQuery', true);
+    await mongoose.connect(uri, { serverSelectionTimeoutMS: 15_000 });
+    Logger.database(`MongoDB connected (${mongoose.connection.name})`);
+}
 
-// --- Types Export ---
-import { Guild, TicketPanel, Ticket, Panel, FormData, Question, Permission } from "../generated/prisma";
+export const disconnectDatabase = () => mongoose.disconnect();
 
-// --- Default Export ---
-import {DefaultPermissions} from "./default/persmession"
+export { mongoose };
 
-// --- Main Exports ---
-export {
-    GuildService,
-    TicketRepository,
-    PanelService,
-    FormService,
-    PermissionService,
-    DefaultPermissions,
-    type Guild,
-    type TicketPanel,
-    type Ticket,
-    type Panel,
-    type FormData,
-    type Question,
-    type Permission,
-    prisma
-};
+export * from './models';
+export * from './repositories';

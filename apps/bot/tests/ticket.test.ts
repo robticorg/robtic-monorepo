@@ -1,0 +1,136 @@
+import { describe, expect, test } from "bun:test";
+import { defaultCommands, defaultTicketControls, missingArabic, newQuestion, normalizeTicketSettings, newTicketOption, newTicketPanel, overwriteBits, t, validateTicketPanel } from "@robo/shared";
+import { mentionedId, parseCommand } from "../src/handlers/message.hendler";
+import { emojiOf, renderMessage } from "../src/lib/messagePayload";
+import { controlRows } from "../src/Permissions/buttons";
+import { showcaseTranscript } from "../../transcript/src/showcase";
+import { transcriptHtml } from "@robo/transcript/html";
+
+describe("both languages", () => {
+    test("every English line has an Arabic one", () => {
+        expect(missingArabic()).toEqual([]);
+    });
+    test("lines fill in their words", () => {
+        expect(t("ar", "claimed", { user: "<@1>" })).toBe("🙋 تولّى <@1> هذه التذكرة.");
+        expect(t("en", "open.created", { channel: "<#2>" })).toContain("<#2>");
+    });
+});
+
+describe("typed commands", () => {
+    test("English and Arabic words, with their argument", () => {
+        expect(parseCommand("!close done here", "!")).toEqual({ command: "close", enabled: true, rest: "done here" });
+        expect(parseCommand("!اغلاق", "!")).toEqual({ command: "close", enabled: true, rest: "" });
+        expect(parseCommand("-تسمية vip-room", "-")).toEqual({ command: "rename", enabled: true, rest: "vip-room" });
+        expect(parseCommand("!تعال <@1>", "!")?.command).toBe("come");
+        expect(parseCommand("!hello", "!")).toBeNull();
+        expect(parseCommand("close", "!")).toBeNull();
+    });
+    test("the server's extra words, and commands turned off", () => {
+        const commands = defaultCommands();
+        commands.close = { enabled: false, aliases: ["done"] };
+        expect(parseCommand("!done thanks", "!", commands)).toEqual({ command: "close", enabled: false, rest: "thanks" });
+        expect(parseCommand("!claim", "!", commands)?.enabled).toBe(true);
+    });
+    test("a mention or a bare id", () => {
+        expect(mentionedId("<@!123456789012345678>")).toBe("123456789012345678");
+        expect(mentionedId("123456789012345678")).toBe("123456789012345678");
+        expect(mentionedId("nobody")).toBeNull();
+    });
+});
+
+describe("permissions", () => {
+    test("an overwrite becomes Discord's allow / deny bits", () => {
+        const { allow, deny } = overwriteBits({ ViewChannel: "allow", SendMessages: "allow", MentionEveryone: "deny" });
+        expect(BigInt(allow)).toBe((1n << 10n) | (1n << 11n));
+        expect(BigInt(deny)).toBe(1n << 17n);
+    });
+});
+
+describe("messages", () => {
+    test("an embed with its text above, words filled in, and the slot under it", () => {
+        const o = newTicketOption("Support");
+        const p = renderMessage(o.welcome, { user: "<@1>", support: "<@&2>", option: "Support" }, [{ type: 1, components: [] }]);
+        expect(p.content).toBe("<@1> <@&2>");
+        expect((p.embeds![0] as { title: string }).title).toBe("Support");
+        expect(p.components.length).toBe(1);
+    });
+    test("components: a container with the slot where it sits, and uploaded pictures as attachments", () => {
+        const o = newTicketOption("Support");
+        o.welcome.format = "components";
+        o.welcome.blocks = [{ id: "i", type: "image", url: `data:image/png;base64,${Buffer.from("png").toString("base64")}` }, ...o.welcome.blocks];
+        const p = renderMessage(o.welcome, {}, [{ type: 1, components: [] }]);
+        expect(p.flags).toBe(1 << 15);
+        const box = p.components[0] as { type: number; components: { type: number }[] };
+        expect(box.type).toBe(17);
+        expect(box.components.map((c) => c.type)).toEqual([12, 10, 14, 1]);
+        expect(p.files![0]!.name).toBe("image-1.png");
+    });
+    test("server emoji and plain emoji", () => {
+        expect(emojiOf("<a:dance:123456789012345678>")).toEqual({ id: "123456789012345678", name: "dance", animated: true });
+        expect(emojiOf("🎫")).toEqual({ name: "🎫" });
+    });
+});
+
+describe("ticket controls", () => {
+    test("Close always shows; hidden controls are left out; a menu holds them all", () => {
+        const c = defaultTicketControls();
+        c.items.close.shown = false;
+        c.items.rename.shown = false;
+        const ids = controlRows(c, false).flatMap((r) => r.components.map((b) => b.custom_id));
+        expect(ids).toContain("tk:c:close");
+        expect(ids).not.toContain("tk:c:rename");
+        expect(ids).not.toContain("tk:c:transfer");
+        c.closedDisplay = "menu";
+        const [row] = controlRows(c, true);
+        const menu = row!.components[0] as { custom_id: string; options: { value: string }[] };
+        expect(menu.custom_id).toBe("tk:cm");
+        expect(menu.options.map((o) => o.value)).toEqual(["reopen", "transcript", "delete"]);
+    });
+});
+
+describe("the dashboard's rules", () => {
+    test("a new panel is valid; Close can't be hidden", () => {
+        const p = newTicketPanel("Support");
+        expect(validateTicketPanel(p)).toEqual([]);
+        p.options[0]!.controls.items.close.shown = false;
+        expect(validateTicketPanel(p).join(" ")).toContain("Close");
+    });
+});
+
+describe("transcript file", () => {
+    test("the HTML file renders the conversation with no scripts", async () => {
+        const html = await transcriptHtml(showcaseTranscript("tr_showcase"));
+        expect(html.startsWith("<!doctype html>")).toBe(true);
+        expect(html).toContain("#report-0128");
+        expect(html).toContain("oops, wrong screenshot");
+        expect(html).not.toContain("<script");
+    });
+});
+
+describe("round 2", () => {
+    test("older settings (one permission set, closeReason) become the new shape", () => {
+        const old = { general: { language: "ar", closeReason: true }, panels: [{ ...newTicketPanel("Old"), options: [{ ...newTicketOption("A"), permissions: { targets: { everyone: { ViewChannel: "deny" } }, roles: {}, closedOwner: "hidden" }, controls: { display: "menu", items: {} } }] }] };
+        const s = normalizeTicketSettings(old);
+        const o = s.panels[0]!.options[0]!;
+        expect(o.permissions.open.targets.everyone).toEqual({ ViewChannel: "deny" });
+        expect(o.permissions.closed.targets.owner).toEqual({ ViewChannel: "deny" });
+        expect(o.controls.items.close.reason).toBe(true);
+        expect(o.controls.display).toBe("menu");
+        expect(s.commands.come.enabled).toBe(true);
+        expect(s.come.button.label).toBe("Go to the ticket");
+    });
+    test("the closed controls use their own display", () => {
+        const c = defaultTicketControls();
+        c.closedDisplay = "menu";
+        expect((controlRows(c, true)[0]!.components[0] as { type: number }).type).toBe(3);
+        expect((controlRows(c, false)[0]!.components[0] as { type: number }).type).toBe(2);
+    });
+    test("every question kind becomes a label with the right Discord part", async () => {
+        const { questionsModal } = await import("../src/ticket/TicketModalCreate");
+        const o = newTicketOption("Report");
+        o.questions = (["short", "select", "radio", "checkboxes", "checkbox"] as const).map((k) => newQuestion(k));
+        const m = questionsModal("p1", o, "en");
+        expect(m.components.map((c) => (c as unknown as { type: number; component: { type: number } }).component.type)).toEqual([4, 3, 21, 22, 23]);
+        expect(m.components.every((c) => (c as { type: number }).type === 18)).toBe(true);
+    });
+});

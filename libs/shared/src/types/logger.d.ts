@@ -9,4 +9,4 @@ export type LoggerConfig = {
     timezone?: string | null;
 };
 
-export type DatabaseLogType = "Prisma" | "MongoDB" | "Redis" | string;
+export type DatabaseLogType = "MongoDB" | "Redis" | string;

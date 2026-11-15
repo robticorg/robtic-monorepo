@@ -1,74 +1,56 @@
-import { Events, Interaction } from "discord.js";
-import { InteractionUtils } from "@/lib/interactionUtils";
-import { FormService, TicketRepository } from "@robo/db";
+import { Events, MessageFlags, type GuildMember, type Interaction } from "discord.js";
 import { Logger } from "@robo/logger";
-import { TicketServices } from "..";
-import { TicketAuditService } from "../TicketAuditService";
-import { TicketDiscordAdapter } from "../TicketDiscordAdapter";
-import { TicketStateMachine } from "../TicketState";
+import { SettingsRepository } from "@robo/db";
+import { t } from "@robo/shared";
+import { fromInteraction } from "@/lib/invocation";
+import { ticketService } from "..";
+import { ACTIONS, runControl } from "../actions";
+import { answerOf } from "../TicketModalCreate";
+import { IDS } from "../types";
 
-interface valueProps {
-    label: string;
-    value: string;
-}
+// The popups: an option's form (then the ticket opens with the answers), Rename's new name, Close's reason, and the
+// member picked for Add, Remove or Transfer.
 
-const ticketRepo = new TicketRepository();
-const ticket = new TicketServices(
-    ticketRepo, 
-    new TicketStateMachine, 
-    new TicketAuditService, 
-    new TicketDiscordAdapter 
-);
-const formData = new FormService();
+const settings = new SettingsRepository();
 
 export default {
     name: Events.InteractionCreate,
     run: async (interaction: Interaction) => {
-        if (!interaction.isModalSubmit()) return;
-        await InteractionUtils.safeDefer(interaction);
-
+        if (!interaction.isModalSubmit() || !interaction.inCachedGuild() || !interaction.customId.startsWith("tk:")) return;
+        const id = interaction.customId;
         try {
-            const found = await formData.find(interaction.customId);
-            if (!found) {
-                return InteractionUtils.safeReply(
-                    interaction,
-                    "❌ Error: Unknown form submitted.",
-                );
+            if (id.startsWith("tk:f:")) {
+                const [, , panelId, optionId] = id.split(":");
+                if (!panelId || !optionId) return;
+                await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+                const s = await settings.get(interaction.guildId);
+                const option = s.panels.find((p) => p.id === panelId)?.options.find((o) => o.id === optionId);
+                const answers = (option?.questions ?? []).map((q) => ({ question: q.label, answer: answerOf(q, interaction, s.general.language) }));
+                const r = await ticketService.open(interaction.guild, interaction.member as GuildMember, panelId, optionId, answers);
+                await interaction.editReply({ content: r.text, allowedMentions: { parse: [] } });
+                return;
             }
-
-            const matchingPanel = found.ticketPanels.find(tp => tp.formId === found.id);
-            if (!matchingPanel) {
-                return InteractionUtils.safeReply(
-                    interaction,
-                    "❌ Error: Missing ticket data for this form.",
-                );
+            if (id === IDS.rename) {
+                await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+                return await runControl("rename", fromInteraction(interaction, { name: interaction.fields.getTextInputValue("name") }), ACTIONS);
             }
-
-            const dataFound = await ticketRepo.panelFind(matchingPanel.id);
-            if (!dataFound) {
-                return InteractionUtils.safeReply(
-                    interaction,
-                    "❌ Error: Missing ticket data for this form.",
-                );
+            if (id === IDS.closeReason) {
+                await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+                return await runControl("close", fromInteraction(interaction, { reason: interaction.fields.getTextInputValue("reason") || null, confirmed: true }), ACTIONS);
             }
-
-            const values: valueProps[] = [];
-            for (const question of found.questions) {
-                values.push({
-                    label: question.name,
-                    value: interaction.fields.getTextInputValue(question.id),
-                });
+            const [, kind, what] = id.split(":");
+            if (kind === "mm" && (what === "add" || what === "remove" || what === "transfer")) {
+                await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+                const userId = [...(interaction.fields.getSelectedUsers("member")?.keys() ?? [])][0];
+                const target = userId ? await interaction.guild.members.fetch(userId).catch(() => null) : null;
+                if (!target) return void (await interaction.editReply({ content: t((await settings.get(interaction.guildId)).general.language, "error") }));
+                return await runControl(what, fromInteraction(interaction, { target }), ACTIONS);
             }
-
-            await ticket.create(interaction, dataFound);
-
-            Logger.debug(`[ModalHandler] Form submitted with ${values.length} answers`);
         } catch (err) {
-            Logger.error("[ModalHandler]", err);
-            await InteractionUtils.safeReply(
-                interaction,
-                "❌ Failed to process this form. Please try again.",
-            );
+            Logger.error(`[ModalHandler] ${id}`, err);
+            const text = t((await settings.get(interaction.guildId)).general.language, "error");
+            if (interaction.deferred || interaction.replied) await interaction.editReply({ content: text }).catch(() => null);
+            else await interaction.reply({ content: text, flags: MessageFlags.Ephemeral }).catch(() => null);
         }
     },
 };

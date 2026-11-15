@@ -1,46 +1,8 @@
-import { Interaction, TextChannel } from "discord.js";
-import { InteractionUtils } from "@/lib/interactionUtils";
-import { messages } from "@/lib/messages";
-import { Logger } from "@robo/logger";
-import { channelProps } from "@robo/shared";
-import { TicketActionServices } from "@/Permissions/roles";
+import { ticketService } from "..";
+import { askFirst, finish, type ActionFn } from "./manage";
 
-export const deleteTicket = async (
-    interaction: Interaction,
-    channelId: string | undefined,
-    services: TicketActionServices
-) => {
-    try {
-        if (!channelId) {
-            return InteractionUtils.safeReply(interaction, messages.error.ticketNotFound);
-        }
-
-        const found = await services.db.find("channel", channelId);
-        if (!found) {
-             await InteractionUtils.safeReply(interaction, messages.warn.noOpenTicket);
-             return;
-        }
-
-        const channelData = (found.panel as any)?.channels as channelProps;
-        const guild = interaction.guild;
-        if (!guild) return;
-
-        const channel = guild.channels.cache.get(channelId);
-        if (!channel) {
-             await InteractionUtils.safeReply(interaction, messages.error.ticketNotFound);
-             return;
-        }
-
-        const channelName = channel.name;
-        // The deletion happens here
-        await channel.delete("Ticket deleted");
-        
-        Logger.success(`Ticket deleted: ${channelId} (${channelName})`);
-
-        await services.db.delete(found.id);
-
-    } catch (err) {
-        Logger.error("[Ticket.delete]", err);
-        await InteractionUtils.safeReply(interaction, messages.error.failedDeleteTicket);
-    }
+/** Deletes the channel after the option's wait (an open ticket's transcript is saved first). */
+export const deleteTicket: ActionFn = async (inv, ctx) => {
+    if (await askFirst(inv, ctx, "delete")) return;
+    await finish(inv, await ticketService.delete(inv.channel, inv.member, ctx));
 };

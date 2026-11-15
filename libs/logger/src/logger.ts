@@ -133,7 +133,7 @@ export const Logger = {
         await write(file, line, { level: file, time: timestamp(), msg, err: err ? String(err) : null });
     },
 
-    database: async (msg: string, Type: DatabaseLogType = "Prisma") => {
+    database: async (msg: string, Type: DatabaseLogType = "MongoDB") => {
         if (!shouldLog("database")) return;
         const line = `${timestamp()} [DATABASE ${Type}] ${msg}`;
         console.log(formatConsole("database", msg));

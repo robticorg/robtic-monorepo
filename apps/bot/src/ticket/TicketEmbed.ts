@@ -1,59 +1,84 @@
-import { ButtonStyle, ContainerBuilder, EmbedBuilder, UserSelectMenuBuilder } from "discord.js";
+import type { Guild, GuildMember } from "discord.js";
+import { t, type Locale, type MessageKey, type TicketAction, type TicketCome, type TicketOption, type TicketPanel } from "@robo/shared";
+import { button, buttonRows, emojiOf, fill, menuRow, renderMessage, type Payload, type Row, type Vars } from "@/lib/messagePayload";
+import { controlRows } from "@/Permissions/buttons";
+import { IDS, type TicketContext } from "./types";
 
-export function Created(data?: any) {
-    return new EmbedBuilder()
-        .setTitle(data?.title || "welcome in ticket")
-        .setDescription(data?.description || "Support will be with you shortly. To close this press the close button")
-        .setColor(data?.color || "DarkBlue")
-        .setTimestamp()
-        .setFooter({
-            text: "@2025 RobTic, All rights reserved",
-            iconURL: "https://raw.githubusercontent.com/robo159/assets/main/images/robo.jpg"
-        })
+// The messages the bot posts: a panel (its design with the ticket options), a new ticket's welcome (with its controls),
+// the form answers, the closed message (with Reopen / Transcript / Delete), the !come direct message, and the one-line
+// notices after a control (the dashboard's text, or the built-in line in the server's language).
+
+export function panelPayload(panel: TicketPanel, guild: Guild): Payload {
+    const options = panel.options;
+    const slot = panel.display === "menu"
+        ? [menuRow(IDS.menu(panel.id), panel.placeholder, options.map((o) => ({ label: o.label, value: o.id, description: o.description, emoji: o.emoji })))]
+        : buttonRows(options.map((o) => button(IDS.open(panel.id, o.id), o.label, o.emoji, o.style)));
+    return renderMessage(panel.message, { server: guild.name }, slot);
 }
 
-export function Managed() {
-    return new EmbedBuilder()
-        .setDescription(`
-        **🎟️ Ticket Management Panel**
-
-        🔹 Add or remove members from this ticket  
-        🔹 Claim or unclaim the ticket  
-        🔹 Transfer ownership to another user  
-        🔹 Rename the ticket *(up to 3 times every 3 minutes)*  
-
-        **Take control — manage your ticket exactly how you want.**
-    `)
-        .setColor("DarkBlue")
-        .setTimestamp()
-        .setFooter({
-            text: "© 2025 RobTic — All rights reserved",
-            iconURL: "https://raw.githubusercontent.com/robo159/assets/main/images/robo.jpg"
-        });
+export function ticketVars(guild: Guild, owner: GuildMember | { id: string; displayName: string }, option: Pick<TicketOption, "label" | "supportRoleIds">, number: number, channelId?: string): Vars {
+    return {
+        user: `<@${owner.id}>`,
+        username: owner.displayName,
+        support: option.supportRoleIds.map((id) => `<@&${id}>`).join(" "),
+        option: option.label,
+        number: String(number).padStart(4, "0"),
+        server: guild.name,
+        channel: channelId ? `<#${channelId}>` : "",
+    };
 }
 
+/** The words of a ticket that already exists. */
+export async function varsOf(guild: Guild, ctx: TicketContext): Promise<Vars> {
+    const owner = await guild.members.fetch(ctx.ticket.ownerId).catch(() => null);
+    const option = ctx.option ?? { label: ctx.ticket.optionLabel, supportRoleIds: [] };
+    return ticketVars(guild, owner ?? { id: ctx.ticket.ownerId, displayName: ctx.ticket.ownerId }, option, ctx.ticket.number, ctx.ticket.channelId);
+}
 
-export const exampleContainer = new ContainerBuilder()
-	.setAccentColor(0x0099ff)
-	.addTextDisplayComponents((textDisplay) =>
-		textDisplay.setContent(
-			'This text is inside a Text Display component! You can use **any __markdown__** available inside this component too.',
-		),
-	)
-	.addActionRowComponents((actionRow) =>
-		actionRow.setComponents(new UserSelectMenuBuilder().setCustomId('exampleSelect').setPlaceholder('Select users')),
-	)
-	.addSeparatorComponents((separator) => separator)
-	.addSectionComponents((section) =>
-		section
-			.addTextDisplayComponents(
-				(textDisplay) =>
-					textDisplay.setContent(
-						'This text is inside a Text Display component! You can use **any __markdown__** available inside this component too.',
-					),
-				(textDisplay) => textDisplay.setContent('And you can place one button or one thumbnail component next to it!'),
-			)
-			.setButtonAccessory((button) =>
-				button.setCustomId('exampleButton').setLabel('Button inside a Section').setStyle(ButtonStyle.Primary),
-			),
-	);  
+/** The welcome message: the option's design with its controls; it pings the owner and the support roles only. */
+export function welcomePayload(option: TicketOption, vars: Vars, ownerId: string): Payload {
+    return renderMessage(option.welcome, vars, controlRows(option.controls, false), { users: [ownerId], roles: option.supportRoleIds });
+}
+
+export function answersPayload(locale: Locale, ownerId: string, answers: { question: string; answer: string }[]): Payload {
+    return {
+        embeds: [{
+            description: t(locale, "open.answers", { user: `<@${ownerId}>` }),
+            color: 0x1793ff,
+            fields: answers.slice(0, 25).map((a) => ({ name: a.question.slice(0, 256) || "?", value: (a.answer || "—").slice(0, 1024) })),
+        }],
+        components: [],
+        allowedMentions: { parse: [] },
+    };
+}
+
+/** The closed message: the option's design ({closer} and {reason} filled in) with the closed controls. Pings nobody. */
+export function closedPayload(locale: Locale, option: TicketOption, vars: Vars, by: string, reason: string | null): Payload {
+    return renderMessage(option.closed, { ...vars, closer: `<@${by}>`, reason: reason || t(locale, "closed.noReason") }, controlRows(option.controls, true), { users: [], roles: [] });
+}
+
+/** The !come direct message, with its "Go to the ticket" link button. */
+export function comePayload(come: TicketCome, vars: Vars, url: string): Payload {
+    const e = emojiOf(come.button.emoji);
+    const label = come.button.label.trim();
+    const link: Row = { type: 1, components: [{ type: 2, style: 5, url, ...(label ? { label: label.slice(0, 80) } : {}), ...(e ? { emoji: e } : {}) }] };
+    return renderMessage(come.message, vars, [link], { users: [], roles: [] });
+}
+
+const BUILT_IN: Partial<Record<TicketAction, MessageKey>> = {
+    claim: "claimed", rename: "renamed", add: "added", remove: "removed", transfer: "transferred", reopen: "reopened",
+};
+
+/**
+ * What the bot says after a control: the dashboard's text for it ({staff} {member} {name} and the ticket's words), else
+ * the built-in line in the server's language. `builtIn` forces a built-in line (e.g. "unclaimed").
+ */
+export function noticeText(ctx: TicketContext, action: TicketAction, vars: Vars, who: { staff: string; member?: string; name?: string }, builtIn?: MessageKey): string {
+    const custom = ctx.option?.controls.items[action]?.notice?.trim();
+    if (custom && !builtIn) return fill(custom, { ...vars, staff: who.staff, member: who.member ?? "", name: who.name ?? "" });
+    const key = builtIn ?? BUILT_IN[action];
+    if (!key) return "";
+    // The built-in lines call whoever acted (or the member added/removed) {user}, and a transfer {from} → {to}.
+    const user = action === "add" || action === "remove" ? who.member ?? "" : who.staff;
+    return t(ctx.settings.general.language, key, { user, from: who.staff, to: who.member ?? "", name: who.name ?? "" });
+}
