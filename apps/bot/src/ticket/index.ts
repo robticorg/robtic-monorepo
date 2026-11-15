@@ -1,7 +1,7 @@
 import type { Guild, GuildMember, TextChannel } from "discord.js";
 import { Logger } from "@robo/logger";
 import { SettingsRepository, TicketRepository } from "@robo/db";
-import { resolvePlaces, t, type TicketAction, type TicketPlaces } from "@robo/shared";
+import { resolvePlaces, t, type TicketAction, type TicketPlaces, resolveLifecycle, durationText } from "@robo/shared";
 import { canUse, isOneOf, isStaff, ticketOverwrites } from "@/Permissions";
 import { TicketAuditService } from "./TicketAuditService";
 import { channelSlug, TicketDiscordAdapter } from "./TicketDiscordAdapter";
@@ -98,13 +98,19 @@ export class TicketServices {
         if (ctx.option) await channel.send(closedPayload(locale, ctx.option, await varsOf(channel.guild, ctx), member.id, reason) as never).catch((e) => Logger.warn(`[Ticket] closed message: ${e}`));
         await audit.log(channel.guild, places.logChannelId, "log.closed", { user: mention(member.id), name: channel.name });
         await archiveTicket(channel.guild, channel.id, { post: true }).catch((e) => Logger.error(`[Ticket] transcript of ${channel.id}`, e));
+        // Auto-delete: remember when, and say so in the ticket (the sweep deletes it, even after a restart).
+        const life = resolveLifecycle(ctx.settings.general, ctx.option);
+        if (life.autoDeleteSeconds > 0) {
+            await repo.update(channel.id, { deleteAt: new Date(Date.now() + life.autoDeleteSeconds * 1000) });
+            await channel.send({ content: t(locale, "autodelete", { time: durationText(life.autoDeleteSeconds, locale) }), allowedMentions: { parse: [] } }).catch(() => null);
+        }
         return ok(reason ? t(locale, "closed.reason", { user: mention(member.id), reason }) : t(locale, "closed.notice", { user: mention(member.id) }));
     }
 
     /** Reopens: the open permissions again, and back to the ticket category if it was moved when closing. */
     async reopen(channel: TextChannel, member: GuildMember, ctx: TicketContext): Promise<Result> {
         const places = placesOf(ctx);
-        const updated = await repo.update(channel.id, { status: "open", closedAt: null, closedBy: null, closeReason: null });
+        const updated = await repo.update(channel.id, { status: "open", closedAt: null, closedBy: null, closeReason: null, deleteAt: null });
         await refreshPermissions(channel, { ...ctx, ticket: updated ?? ctx.ticket }, false);
         if (places.closedCategoryId && channel.parentId === places.closedCategoryId) await discord.move(channel, places.categoryId);
         await audit.log(channel.guild, places.logChannelId, "log.reopened", { user: mention(member.id), channel: `<#${channel.id}>` });
@@ -115,10 +121,15 @@ export class TicketServices {
     async delete(channel: TextChannel, member: GuildMember, ctx: TicketContext): Promise<Result> {
         const locale = ctx.settings.general.language;
         const seconds = ctx.option?.controls.items.delete.delay ?? 5;
+        const life = resolveLifecycle(ctx.settings.general, ctx.option);
         if (ctx.ticket.status === "open") {
             await repo.update(channel.id, { status: "closed", closedAt: new Date(), closedBy: member.id, closeReason: "deleted" });
-            await archiveTicket(channel.guild, channel.id, { post: true }).catch(() => null);
+            if (life.transcriptOnDelete) await archiveTicket(channel.guild, channel.id, { post: true }).catch(() => null);
+        } else if (life.transcriptOnDelete) {
+            // Closed already: save it again so it has what was said after closing (same link, no second post).
+            await archiveTicket(channel.guild, channel.id, { post: false }).catch(() => null);
         }
+        await repo.update(channel.id, { deleteAt: null });
         await audit.log(channel.guild, placesOf(ctx).logChannelId, "log.deleted", { user: mention(member.id), name: channel.name });
         setTimeout(() => void discord.deleteChannel(channel), seconds * 1000);
         const custom = ctx.option?.controls.items.delete.notice.trim();

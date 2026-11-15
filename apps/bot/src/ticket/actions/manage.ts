@@ -1,5 +1,5 @@
 import type { APIModalInteractionResponseCallbackData, GuildMember, TextChannel } from "discord.js";
-import { t, type TicketAction } from "@robo/shared";
+import { resolveLifecycle, t, type TicketAction } from "@robo/shared";
 import { check, type Result } from "..";
 import type { TicketContext } from "../types";
 import { contextOf } from "../utils";
@@ -36,7 +36,9 @@ export async function finish(inv: Invocation, r: Result) {
 /** Asks first when the option wants a confirmation and this came from a button (commands are deliberate already). */
 export async function askFirst(inv: Invocation, ctx: TicketContext, action: "close" | "delete"): Promise<boolean> {
     if (inv.args.confirmed || !inv.confirm || !ctx.option?.controls.items[action].confirm) return false;
-    await inv.confirm(action, t(ctx.settings.general.language, action === "close" ? "confirm.close" : "confirm.delete"));
+    // Close: the dashboard's own wording when it has one (the option's, else the server's).
+    const custom = action === "close" ? resolveLifecycle(ctx.settings.general, ctx.option).closeConfirm.trim() : "";
+    await inv.confirm(action, custom || t(ctx.settings.general.language, action === "close" ? "confirm.close" : "confirm.delete"));
     return true;
 }
 

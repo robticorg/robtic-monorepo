@@ -70,6 +70,18 @@ export class TicketRepository {
         return TicketModel.findOne({ channelId }).lean<TicketDoc>().catch(() => null);
     }
 
+    /** Closed tickets whose auto-delete time has come. */
+    dueForDelete(now = new Date()) {
+        return TicketModel.find({ status: 'closed', deleteAt: { $ne: null, $lte: now } }).limit(50).lean<TicketDoc[]>().catch(() => [] as TicketDoc[]);
+    }
+
+    /** Adds pictures to a ticket's count unless that would pass `max` (0 = no limit). True when they fit. */
+    async addImages(channelId: string, n: number, max: number): Promise<boolean> {
+        const filter = max > 0 ? { channelId, imageCount: { $lte: max - n } } : { channelId };
+        const r = await TicketModel.updateOne(filter, { $inc: { imageCount: n } }).catch(() => null);
+        return Boolean(r?.modifiedCount);
+    }
+
     /** The member's open tickets from one option (for the per-member limit). */
     openOf(guildId: string, ownerId: string, optionId: string) {
         return TicketModel.find({ guildId, ownerId, optionId, status: 'open' }).lean<TicketDoc[]>();
