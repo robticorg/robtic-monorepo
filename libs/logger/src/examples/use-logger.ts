@@ -13,7 +13,7 @@ async function main() {
         await Logger.error("caught test error", err);
     }
 
-    await Logger.database("Prisma connected", "Prisma");
+    await Logger.database("MongoDB connected", "MongoDB");
     await Logger.perf("ticket.create", 123);
 }
 
