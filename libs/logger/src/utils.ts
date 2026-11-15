@@ -19,15 +19,17 @@ export function dailyFile(name: string) {
     return `${name}-${dayjs().format("YYYY-MM-DD")}.log`;
 }
 
+/** Appends a line to a log file. A log file that can't be written (no folder, no permission) never stops the bot. */
 export async function appendFileSafe(filePath: string, data: string) {
     try {
         await fs.appendFile(filePath, data + "\n");
     } catch (err: any) {
-        if (err.code === "ENOENT") {
+        if (err?.code !== "ENOENT") return;
+        try {
             await fs.ensureDir(path.dirname(filePath));
             await fs.appendFile(filePath, data + "\n");
-            return;
+        } catch {
+            // the console line was already printed
         }
-        throw err;
     }
 }

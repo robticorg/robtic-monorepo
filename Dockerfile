@@ -20,6 +20,8 @@ ENV NODE_ENV=production \
     TRANSCRIPT_BASE_PATH=$TRANSCRIPT_BASE_PATH \
     TRANSCRIPT_PORT=5180
 COPY --from=build --chown=bun:bun /app /app
+# The logger writes to /app/logs; /app itself (made by WORKDIR) is root's, so make the folder for the bun user.
+RUN mkdir -p /app/logs && chown bun:bun /app /app/logs
 USER bun
 EXPOSE 5180
 CMD ["bun", "apps/bot/src/bot.ts"]
