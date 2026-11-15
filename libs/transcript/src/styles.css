@@ -754,6 +754,7 @@ a.embed-title {
 }
 .embed-image {
   border-radius: 4px;
+  max-width: min(400px, 100%);
   max-height: 300px;
   object-fit: contain;
 }
@@ -782,7 +783,7 @@ a.embed-title {
 .attachment-image {
   position: relative;
   margin: 0;
-  max-width: 420px;
+  max-width: min(550px, 100%);
 }
 .attachment-image img {
   border-radius: 8px;
@@ -1183,16 +1184,41 @@ html[dir="rtl"] .details-header {
   cursor: default;
   opacity: 0.85;
 }
+/* A media gallery laid out the way Discord does: one picture at its own shape across the width; 2 to 10 in Discord's
+   fixed patterns (6 columns: a third = 2, a half = 3, the full width = 6), cropped to fill. */
 .cv2-gallery {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  grid-template-columns: repeat(6, 1fr);
   gap: 4px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.cv2-gallery > *,
+.cv2-gallery > .zoomable {
+  grid-column: span 2;
+  aspect-ratio: 1;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
 }
 .cv2-gallery img {
+  display: block;
   width: 100%;
-  border-radius: 6px;
+  height: 100%;
   object-fit: cover;
 }
+.cv2-gallery[data-count="1"] > * { grid-column: span 6; aspect-ratio: auto; }
+.cv2-gallery[data-count="1"] img { height: auto; max-height: 500px; object-fit: contain; }
+.cv2-gallery[data-count="2"] > *,
+.cv2-gallery[data-count="4"] > *,
+.cv2-gallery[data-count="5"] > :nth-child(-n + 2),
+.cv2-gallery[data-count="8"] > :nth-child(-n + 2) { grid-column: span 3; }
+.cv2-gallery[data-count="3"] > :first-child { grid-column: span 4; grid-row: span 2; }
+.cv2-gallery[data-count="7"] > :first-child,
+.cv2-gallery[data-count="10"] > :first-child { grid-column: span 6; aspect-ratio: 16 / 9; }
 
 .details-grid-row {
   display: contents;

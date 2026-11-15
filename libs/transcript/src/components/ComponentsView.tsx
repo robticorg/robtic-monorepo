@@ -116,9 +116,9 @@ function Node({ c, doc }: { c: ComponentSnapshot; doc: TicketTranscriptDocument 
       return <SafeImage className="cv2-thumbnail" src={c.mediaUrls?.[0]} alt="" />;
     case 'gallery':
       return (
-        <div className="cv2-gallery">
+        <div className="cv2-gallery" data-count={Math.min((c.mediaUrls ?? []).length, 10)}>
           {(c.mediaUrls ?? []).map((u) => (
-            <SafeImage key={u} src={u} alt="" />
+            <SafeImage key={u} src={u} alt="" zoomable />
           ))}
         </div>
       );
