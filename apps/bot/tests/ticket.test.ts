@@ -101,12 +101,12 @@ describe("the dashboard's rules", () => {
 describe("closing and pictures", () => {
     test("an option uses the server's values unless it sets its own", () => {
         const s = normalizeTicketSettings({ general: { lifecycle: { autoDeleteSeconds: 300, maxImages: 10 } } });
-        expect(s.general.lifecycle).toEqual({ transcriptOnDelete: true, autoDeleteSeconds: 300, closeConfirm: "", maxImageMB: 0, maxImages: 10 });
+        expect(s.general.lifecycle).toEqual({ transcriptOnDelete: true, autoDeleteSeconds: 300, closeConfirm: "" });
         const o = newTicketOption("A");
         expect(resolveLifecycle(s.general, o).autoDeleteSeconds).toBe(300);
         o.lifecycle = { ...o.lifecycle, autoDeleteSeconds: 0, closeConfirm: "Sure?" };
-        expect(resolveLifecycle(s.general, o)).toMatchObject({ autoDeleteSeconds: 0, closeConfirm: "Sure?", maxImages: 10 });
-        expect(normalizeTicketSettings({ panels: [{ ...newTicketPanel("P") }] }).panels[0]!.options[0]!.lifecycle.maxImages).toBeNull();
+        expect(resolveLifecycle(s.general, o)).toMatchObject({ autoDeleteSeconds: 0, closeConfirm: "Sure?", transcriptOnDelete: true });
+        expect(normalizeTicketSettings({ panels: [{ ...newTicketPanel("P") }] }).panels[0]!.options[0]!.lifecycle.autoDeleteSeconds).toBeNull();
     });
     test("durations read naturally in both languages", () => {
         expect(durationText(45)).toBe("45 seconds");
@@ -118,6 +118,43 @@ describe("closing and pictures", () => {
         const p = newTicketPanel("P");
         p.options[0]!.lifecycle.autoDeleteSeconds = 999_999_999;
         expect(validateTicketPanel(p).join(" ")).toContain("auto-delete");
+    });
+});
+
+describe("round 4", () => {
+    const fakeGuild = { roles: { everyone: { id: "1" } }, members: { me: null } } as never;
+    test("a claimed ticket uses the claimed permissions only when they're turned on", async () => {
+        const { ticketOverwrites } = await import("../src/Permissions/permissions");
+        const o = newTicketOption("A");
+        o.supportRoleIds = ["50"];
+        const text = (v: unknown) => JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? x.toString() : x));
+        const support = (claimerId: string | null) => text((ticketOverwrites(fakeGuild, o, { ownerId: "9", claimerId, addedIds: [] }) as { id: string }[]).find((x) => x.id === "50"));
+        const openSupport = support("8");
+        o.permissions.useClaimed = true;
+        expect(support("8")).not.toBe(openSupport);
+        expect(support(null)).toBe(openSupport);
+    });
+    test("the controls' menu goes where its own block sits; without one it follows the buttons", () => {
+        const c = defaultTicketControls();
+        c.items.rename.placement = "menu";
+        const m = { ...newTicketPanel("P").message, format: "components" as const };
+        m.blocks = [{ id: "slotMenu", type: "slotMenu" }, { id: "t", type: "text", content: "Hi" }, { id: "slot", type: "slot" }];
+        const kids = (renderMessage(m, {}, controlRows(c, false)).components[0] as { components: { type: number; components?: { type: number }[] }[] }).components;
+        expect(kids[0]!.components![0]!.type).toBe(3);
+        expect(kids[1]!.type).toBe(10);
+        expect(kids[2]!.components![0]!.type).toBe(2);
+    });
+    test("a panel is all buttons or all menu, and info buttons sit beside its buttons", async () => {
+        const { panelPayload } = await import("../src/ticket/TicketEmbed");
+        const p = newTicketPanel("P");
+        p.infoButtons = [{ ...newInfoItem("ip1", "Rules"), id: "n1" }];
+        const g = { name: "S" } as never;
+        expect(JSON.stringify(panelPayload(p, g).components)).toContain("tk:v:ip1:n1");
+        p.display = "menu";
+        const json = JSON.stringify(panelPayload(p, g).components);
+        expect(json).toContain("tk:m:");
+        expect(json).not.toContain("tk:v:ip1:n1");
+        expect(normalizeTicketSettings({ panels: [{ ...newTicketPanel("Old"), display: undefined, options: [{ ...newTicketOption("A"), placement: "menu" }] }] }).panels[0]!.display).toBe("menu");
     });
 });
 

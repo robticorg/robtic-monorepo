@@ -70,6 +70,17 @@ export class TicketRepository {
         return TicketModel.findOne({ channelId }).lean<TicketDoc>().catch(() => null);
     }
 
+    /** A message in a ticket: the owner writing clears the sleep; anyone else starts the wait (if it isn't running). */
+    async noteMessage(channelId: string, authorId: string) {
+        await TicketModel.updateOne({ channelId, status: 'open', ownerId: authorId }, { $set: { ownerQuietSince: null, sleepRemindedAt: null, sleepCloseAt: null } }).catch(() => null);
+        await TicketModel.updateOne({ channelId, status: 'open', ownerId: { $ne: authorId }, ownerQuietSince: null }, { $set: { ownerQuietSince: new Date() } }).catch(() => null);
+    }
+
+    /** Open tickets waiting on their owner (the sleep sweep decides what's due). */
+    waitingOnOwner() {
+        return TicketModel.find({ status: 'open', $or: [{ ownerQuietSince: { $ne: null } }, { sleepCloseAt: { $ne: null } }] }).limit(300).lean<TicketDoc[]>().catch(() => [] as TicketDoc[]);
+    }
+
     /** Closed tickets whose auto-delete time has come. */
     dueForDelete(now = new Date()) {
         return TicketModel.find({ status: 'closed', deleteAt: { $ne: null, $lte: now } }).limit(50).lean<TicketDoc[]>().catch(() => [] as TicketDoc[]);

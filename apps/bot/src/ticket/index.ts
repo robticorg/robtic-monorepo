@@ -5,7 +5,8 @@ import { resolvePlaces, t, type TicketAction, type TicketPlaces, resolveLifecycl
 import { canUse, isOneOf, isStaff, ticketOverwrites } from "@/Permissions";
 import { TicketAuditService } from "./TicketAuditService";
 import { channelSlug, TicketDiscordAdapter } from "./TicketDiscordAdapter";
-import { answersPayload, closedPayload, comePayload, noticeText, ticketVars, varsOf, welcomePayload } from "./TicketEmbed";
+import { answersPayload, closedPayload, comePayload, noticeText, sleepPayloads, ticketVars, varsOf, welcomePayload } from "./TicketEmbed";
+import { renderMessage, type Payload, type Vars } from "@/lib/messagePayload";
 import { TicketStateMachine } from "./TicketState";
 import { archiveTicket } from "./transcript/archive";
 import { sendClaimPoints } from "./staffPoints";
@@ -22,10 +23,19 @@ const audit = new TicketAuditService();
 const discord = new TicketDiscordAdapter();
 const state = new TicketStateMachine();
 
-export type Result = { ok: boolean; text: string; files?: { attachment: Buffer; name: string }[] };
+export type Result = { ok: boolean; text: string; files?: { attachment: Buffer; name: string }[]; /** A designed message to post instead of `text`. */ payload?: Payload };
 const ok = (text: string): Result => ({ ok: true, text });
 const no = (text: string): Result => ({ ok: false, text });
 const mention = (id: string) => `<@${id}>`;
+
+/** After a control: the option's designed message when it has one (embed or components), else the one-line notice. */
+function noticeOk(ctx: TicketContext, action: TicketAction, vars: Vars, who: { staff: string; member?: string; name?: string }, builtIn?: Parameters<typeof noticeText>[4]): Result {
+    const item = ctx.option?.controls.items[action];
+    if (item?.noticeStyle === "design" && !builtIn) {
+        return { ok: true, text: "", payload: renderMessage(item.noticeDesign, { ...vars, staff: who.staff, member: who.member ?? "", name: who.name ?? "" }, [], { users: [], roles: [] }) };
+    }
+    return noticeOk(ctx, action, vars, who, builtIn);
+}
 
 /** The checks every control shares: may this member do this, and does the ticket's state allow it? */
 export function check(member: GuildMember, ctx: TicketContext, action: TicketAction): Result | null {
@@ -114,7 +124,7 @@ export class TicketServices {
         await refreshPermissions(channel, { ...ctx, ticket: updated ?? ctx.ticket }, false);
         if (places.closedCategoryId && channel.parentId === places.closedCategoryId) await discord.move(channel, places.categoryId);
         await audit.log(channel.guild, places.logChannelId, "log.reopened", { user: mention(member.id), channel: `<#${channel.id}>` });
-        return ok(noticeText(ctx, "reopen", await varsOf(channel.guild, ctx), { staff: mention(member.id) }));
+        return noticeOk(ctx, "reopen", await varsOf(channel.guild, ctx), { staff: mention(member.id) });
     }
 
     /** Deletes the channel after the option's wait; an open ticket's transcript is saved first. */
@@ -133,7 +143,7 @@ export class TicketServices {
         await audit.log(channel.guild, placesOf(ctx).logChannelId, "log.deleted", { user: mention(member.id), name: channel.name });
         setTimeout(() => void discord.deleteChannel(channel), seconds * 1000);
         const custom = ctx.option?.controls.items.delete.notice.trim();
-        if (custom) return ok(noticeText(ctx, "delete", await varsOf(channel.guild, ctx), { staff: mention(member.id) }));
+        if (custom) return noticeOk(ctx, "delete", await varsOf(channel.guild, ctx), { staff: mention(member.id) });
         return ok(seconds > 0 ? t(locale, "deleting", { seconds }) : t(locale, "deleting.now"));
     }
 
@@ -149,13 +159,13 @@ export class TicketServices {
         if (claimerId) await audit.log(channel.guild, placesOf(ctx).logChannelId, "log.claimed", { user: mention(member.id), channel: `<#${channel.id}>` });
         // Robtic Staff link: points for the claim (in the background; the claim never waits for it).
         if (claimerId) void sendClaimPoints(ctx.settings, channel.guild.id, member.id, { channelId: channel.id, number: ctx.ticket.number });
-        return ok(noticeText(ctx, "claim", await varsOf(channel.guild, ctx), { staff: mention(member.id) }, claimerId ? undefined : "unclaimed"));
+        return noticeOk(ctx, "claim", await varsOf(channel.guild, ctx), { staff: mention(member.id) }, claimerId ? undefined : "unclaimed");
     }
 
     async rename(channel: TextChannel, member: GuildMember, ctx: TicketContext, name: string): Promise<Result> {
         const slug = channelSlug(name);
         if (!(await discord.rename(channel, slug))) return no(t(ctx.settings.general.language, "rename.slow"));
-        return ok(noticeText(ctx, "rename", await varsOf(channel.guild, ctx), { staff: mention(member.id), name: slug }));
+        return noticeOk(ctx, "rename", await varsOf(channel.guild, ctx), { staff: mention(member.id), name: slug });
     }
 
     async add(channel: TextChannel, member: GuildMember, ctx: TicketContext, target: GuildMember): Promise<Result> {
@@ -163,7 +173,7 @@ export class TicketServices {
         const updated = await repo.update(channel.id, { addedIds: added });
         await repo.addParticipant(channel.id, target.id, "added");
         await refreshPermissions(channel, { ...ctx, ticket: updated ?? ctx.ticket });
-        return ok(noticeText(ctx, "add", await varsOf(channel.guild, ctx), { staff: mention(member.id), member: mention(target.id) }));
+        return noticeOk(ctx, "add", await varsOf(channel.guild, ctx), { staff: mention(member.id), member: mention(target.id) });
     }
 
     async remove(channel: TextChannel, member: GuildMember, ctx: TicketContext, target: GuildMember): Promise<Result> {
@@ -176,7 +186,7 @@ export class TicketServices {
         });
         await channel.permissionOverwrites.delete(target.id).catch(() => null);
         await refreshPermissions(channel, { ...ctx, ticket: updated ?? ctx.ticket });
-        return ok(noticeText(ctx, "remove", await varsOf(channel.guild, ctx), { staff: mention(member.id), member: mention(target.id) }));
+        return noticeOk(ctx, "remove", await varsOf(channel.guild, ctx), { staff: mention(member.id), member: mention(target.id) });
     }
 
     /** Hands the ticket to another staff member of this option (they become the claimer). */
@@ -186,7 +196,7 @@ export class TicketServices {
         const updated = await repo.update(channel.id, { claimerId: target.id });
         await repo.addParticipant(channel.id, target.id, "claimer");
         await refreshPermissions(channel, { ...ctx, ticket: updated ?? ctx.ticket });
-        return ok(noticeText(ctx, "transfer", await varsOf(channel.guild, ctx), { staff: mention(member.id), member: mention(target.id) }));
+        return noticeOk(ctx, "transfer", await varsOf(channel.guild, ctx), { staff: mention(member.id), member: mention(target.id) });
     }
 
     /** Saves the transcript now and answers with its link (or file). */
@@ -221,4 +231,38 @@ export class TicketServices {
 }
 
 export const ticketService = new TicketServices();
+
+/**
+ * Sleep: remind the owner now (in the ticket and by direct message) and set when the ticket closes for no answer.
+ * `manual` is /sleep (its own permission; works with the automatic sleep off). Only while the last message isn't the
+ * owner's.
+ */
+export async function remindOwner(channel: TextChannel, ctx: TicketContext, by: GuildMember | null, manual: boolean): Promise<Result> {
+    const locale = ctx.settings.general.language;
+    const z = ctx.settings.sleep;
+    if (manual && by) {
+        if (!ctx.settings.commands.sleep.enabled) return no(t(locale, "cmd.off"));
+        if (!isOneOf(by, ctx, z)) return no(t(locale, "deny"));
+        if (ctx.ticket.status === "closed") return no(t(locale, "closed.already"));
+        if (!ctx.ticket.ownerQuietSince) return no(t(locale, "sleep.ownerLast"));
+    }
+    const left = (z.closeMinutes - z.reminderMinutes) * 60;
+    const time = durationText(left, locale);
+    const vars: Vars = { ...(await varsOf(channel.guild, ctx)), staff: by ? mention(by.id) : "", time };
+    const url = `https://discord.com/channels/${channel.guild.id}/${channel.id}`;
+    const { inTicket, dm } = sleepPayloads(z, vars, url, ctx.ticket.ownerId);
+    await channel.send(inTicket as never).catch((e) => Logger.warn(`[sleep] ticket message: ${e}`));
+    const owner = await channel.guild.members.fetch(ctx.ticket.ownerId).catch(() => null);
+    await owner?.send(dm as never).catch(() => null);
+    await repo.update(channel.id, { sleepRemindedAt: new Date(), sleepCloseAt: new Date(Date.now() + left * 1000), ...(ctx.ticket.ownerQuietSince ? {} : { ownerQuietSince: new Date() }) });
+    return ok(manual ? t(locale, "sleep.started", { user: mention(ctx.ticket.ownerId), time }) : "");
+}
+
+/** Sleep's end: the ticket closes for no answer (the bot closes it). */
+export async function closeForNoAnswer(channel: TextChannel, ctx: TicketContext): Promise<void> {
+    const me = channel.guild.members.me;
+    if (!me) return;
+    await repo.update(channel.id, { sleepCloseAt: null, ownerQuietSince: null, sleepRemindedAt: null });
+    await ticketService.close(channel, me, ctx, t(ctx.settings.general.language, "sleep.closed"));
+}
 export { TicketRepository, TicketStateMachine, TicketAuditService, TicketDiscordAdapter };

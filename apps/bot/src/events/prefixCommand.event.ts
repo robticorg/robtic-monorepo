@@ -3,7 +3,7 @@ import { SettingsRepository } from "@robo/db";
 import { t } from "@robo/shared";
 import { mentionedId, parseCommand } from "@/handlers/message.hendler";
 import { fromMessage } from "@/lib/invocation";
-import { ACTIONS, runCome, runControl } from "@/ticket/actions";
+import { ACTIONS, runCome, runSleep, runControl } from "@/ticket/actions";
 
 const settings = new SettingsRepository();
 
@@ -22,6 +22,7 @@ export default {
         const targetId = mentionedId(cmd.rest);
         const target = targetId ? await message.guild.members.fetch(targetId).catch(() => null) : null;
         if (cmd.command === "come") return await runCome(fromMessage(message, { target }));
+        if (cmd.command === "sleep") return await runSleep(fromMessage(message, {}));
         const args = cmd.command === "close" ? { reason: cmd.rest || null } : cmd.command === "rename" ? { name: cmd.rest || null } : { target };
         await runControl(cmd.command, fromMessage(message, args), ACTIONS);
     },

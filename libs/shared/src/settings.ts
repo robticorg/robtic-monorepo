@@ -354,12 +354,11 @@ export const TICKET_LIMITS = {
     cooldown: 1440,
     /** Seconds Delete waits before the channel goes. */
     deleteDelay: 60,
+    /** Sleep: minutes before the reminder and before closing (30 days at most). */
+    sleepMinutes: 43_200,
     /** Auto-delete after closing: up to 7 days, in seconds. */
     autoDelete: 604_800,
     confirmText: 300,
-    /** Picture limits in a ticket: up to Discord's 500 MB, and 500 pictures. */
-    imageMB: 500,
-    images: 500,
     templates: 100,
     templateName: 60,
 } as const;
@@ -413,7 +412,18 @@ export type MessageBlock =
     | { id: string; type: 'thumbText'; content: string; thumbnail: string }
     | { id: string; type: 'separator'; divider: boolean; spacing: 1 | 2 }
     | InfoBlock
-    | { id: string; type: 'slot' };
+    | { id: string; type: 'slot' }
+    /** Components only: where the controls' menu goes when it's split from their buttons (else it follows them). */
+    | { id: string; type: 'slotMenu' };
+
+/** A short designed message (a notice, a confirmation, a DM): an embed with this text, or a container. */
+export const simpleDesign = (text: string, color = '#1793ff'): MessageDesign => ({
+    format: 'embed',
+    content: '',
+    embed: { color, author: '', title: '', url: '', description: text, fields: [], thumbnail: '', image: '', footer: '' },
+    accent: color,
+    blocks: [{ id: 't', type: 'text', content: text }, { id: 'slot', type: 'slot' }],
+});
 
 export const MESSAGE_BLOCK_KINDS = [
     ['text', 'Text', 'Markdown: headings, lists, links, mentions.'],
@@ -534,6 +544,9 @@ export interface PermissionSet {
 export interface TicketPermissions {
     open: PermissionSet;
     closed: PermissionSet;
+    /** While open and claimed: used instead of `open` when `useClaimed` is on (e.g. only the claimer may write). */
+    claimed: PermissionSet;
+    useClaimed: boolean;
 }
 
 /* ------------------------------------------------------------------ the ticket controls */
@@ -576,6 +589,12 @@ export interface TicketControlItem extends TicketWho {
     placement: ItemPlacement;
     /** On the closed message (Reopen, Transcript, Delete): set apart from the open ticket's. */
     closedPlacement: ItemPlacement;
+    /** What the bot posts after it: the one-line `notice` (text), or a designed message (embed or components). */
+    noticeStyle: 'text' | 'design';
+    noticeDesign: MessageDesign;
+    /** Close, Delete: the "are you sure?" as plain text (the server's close confirmation / built-in line) or designed. */
+    confirmStyle: 'text' | 'design';
+    confirmDesign: MessageDesign;
 }
 
 export interface TicketControls {
@@ -670,16 +689,15 @@ export interface TicketLifecycle {
     autoDeleteSeconds: number;
     /** The "are you sure?" when closing; empty = the built-in line in the server's language. */
     closeConfirm: string;
-    /** Largest picture a member may post in a ticket, in MB; 0 = Discord's own limit. */
-    maxImageMB: number;
-    /** Most pictures one ticket may hold (all messages together); 0 = no limit. */
-    maxImages: number;
 }
+
+/** Pictures in tickets: Robtic's own rule, the same everywhere (kept small: transcripts keep every picture). */
+export const TICKET_PICTURES = { perTicket: 1, maxMB: 8 } as const;
 
 export type TicketLifecycleOverride = { [K in keyof TicketLifecycle]: TicketLifecycle[K] | null };
 
-export const defaultLifecycle = (): TicketLifecycle => ({ transcriptOnDelete: true, autoDeleteSeconds: 0, closeConfirm: '', maxImageMB: 0, maxImages: 0 });
-export const inheritLifecycle = (): TicketLifecycleOverride => ({ transcriptOnDelete: null, autoDeleteSeconds: null, closeConfirm: null, maxImageMB: null, maxImages: null });
+export const defaultLifecycle = (): TicketLifecycle => ({ transcriptOnDelete: true, autoDeleteSeconds: 0, closeConfirm: '' });
+export const inheritLifecycle = (): TicketLifecycleOverride => ({ transcriptOnDelete: null, autoDeleteSeconds: null, closeConfirm: null });
 
 /** An option's own choice, else the server's. */
 export function resolveLifecycle(g: TicketGeneral, o: TicketOption | null): TicketLifecycle {
@@ -688,8 +706,6 @@ export function resolveLifecycle(g: TicketGeneral, o: TicketOption | null): Tick
         transcriptOnDelete: own.transcriptOnDelete ?? g.lifecycle.transcriptOnDelete,
         autoDeleteSeconds: own.autoDeleteSeconds ?? g.lifecycle.autoDeleteSeconds,
         closeConfirm: own.closeConfirm ?? g.lifecycle.closeConfirm,
-        maxImageMB: own.maxImageMB ?? g.lifecycle.maxImageMB,
-        maxImages: own.maxImages ?? g.lifecycle.maxImages,
     };
 }
 
@@ -742,11 +758,15 @@ export interface TicketPanel extends TicketPlaces {
     /** Where the panel is posted. */
     channelId: Snowflake | null;
     message: MessageDesign;
-    /** The panel's menu (options and info buttons placed in the menu). */
+    /** Every ticket option as a button, or all in one menu (a panel is one or the other). */
+    display: 'buttons' | 'menu';
+    /** The menu's placeholder. */
     placeholder: string;
     /** Members with these roles can't open tickets here (added to the server's list). */
     blacklistRoleIds: Snowflake[];
     options: TicketOption[];
+    /** Button panels only: info buttons beside the ticket buttons (each shows one of the server's info panels). */
+    infoButtons: TicketInfoItem[];
     posted: { channelId: Snowflake; messageId: Snowflake; at: string } | null;
 }
 
@@ -766,6 +786,40 @@ export interface TicketGeneral extends TicketPlaces {
     staffPoints: { enabled: boolean; perClaim: number };
     /** Defaults for every ticket option: transcript on delete, auto-delete after closing, the close confirmation. */
     lifecycle: TicketLifecycle;
+    /** The message posted in the transcript channel with each transcript. */
+    transcriptPost: TranscriptMessage;
+    /** The direct message to the owner with the transcript (when transcriptToOwner). */
+    dmTranscript: TranscriptMessage;
+}
+
+/** How a transcript is sent: plain text or a designed message, with or without the HTML file and a link button. */
+export interface TranscriptMessage {
+    style: 'text' | 'design';
+    /** Text style: {number} {channel} {server} {link}. */
+    text: string;
+    /** Design style: an embed or components; the button sits in its slot. */
+    design: MessageDesign;
+    /** Attach the transcript as an HTML file. */
+    attachFile: boolean;
+    /** A link button to the transcript page. */
+    button: { show: boolean; label: string; emoji: string };
+}
+
+/* ------------------------------------------------------------------ sleep: an owner who stopped answering */
+
+/**
+ * Ticket sleep: when the last message in a ticket isn't the owner's (staff answered, the owner went quiet), after
+ * `reminderMinutes` the bot reminds them (in the ticket and by direct message), and after `closeMinutes` it closes the
+ * ticket. /sleep (!خمول) sends the reminder now and starts the countdown, even with the automatic one off.
+ */
+export interface TicketSleep extends TicketWho {
+    enabled: boolean;
+    reminderMinutes: number;
+    closeMinutes: number;
+    /** Posted in the ticket: {user} {staff} {time} and the ticket's words. */
+    ticketMessage: MessageDesign;
+    /** Sent to the owner: the slot is a "Go to the ticket" link. */
+    dmMessage: MessageDesign;
 }
 
 /* ------------------------------------------------------------------ !come */
@@ -784,7 +838,7 @@ export interface TicketCome extends TicketWho {
 
 /* ------------------------------------------------------------------ commands */
 
-export const TICKET_COMMANDS = [...TICKET_ACTIONS, 'come'] as const;
+export const TICKET_COMMANDS = [...TICKET_ACTIONS, 'come', 'sleep'] as const;
 export type TicketCommand = (typeof TICKET_COMMANDS)[number];
 export const TICKET_COMMAND_INFO: Record<TicketCommand, { does: string; ar: string; args?: string }> = {
     close: { does: 'Close the ticket', ar: 'اغلاق', args: '[reason]' },
@@ -797,6 +851,7 @@ export const TICKET_COMMAND_INFO: Record<TicketCommand, { does: string; ar: stri
     reopen: { does: 'Reopen a closed ticket', ar: 'فتح' },
     delete: { does: 'Delete the channel', ar: 'حذف' },
     come: { does: 'Call the owner back with a direct message', ar: 'تعال', args: '[@member]' },
+    sleep: { does: 'Remind the owner now and start the sleep countdown', ar: 'خمول' },
 };
 
 export interface TicketCommandSetting {
@@ -808,6 +863,7 @@ export interface TicketCommandSetting {
 
 export interface TicketSettings {
     general: TicketGeneral;
+    sleep: TicketSleep;
     panels: TicketPanel[];
     come: TicketCome;
     commands: Record<TicketCommand, TicketCommandSetting>;
@@ -905,8 +961,18 @@ export const ticketEmbed = (over: Partial<PanelEmbed> = {}): PanelEmbed => ({
     color: '#1793ff', author: '', title: '', url: '', description: '', fields: [], thumbnail: '', image: '', footer: '', ...over,
 });
 
+const NOTICE_WORDS: Partial<Record<string, string>> = {
+    Claim: '{staff} claimed this ticket.', Rename: '{staff} renamed the ticket to {name}.', Add: '{staff} added {member} to the ticket.',
+    Remove: '{staff} removed {member} from the ticket.', Transfer: '{staff} gave the ticket to {member}.', Transcript: 'Transcript saved.',
+    Reopen: '{staff} reopened the ticket.', Delete: 'This ticket will be deleted in a few seconds.', Close: '{staff} closed the ticket.',
+};
+const CONFIRM_WORDS: Partial<Record<string, string>> = { Close: 'Close this ticket?', Delete: 'Delete this ticket? This can’t be undone.' };
+
 const item = (label: string, emoji: string, style: TicketButtonStyle, who: TicketTarget[], description = '', more: Partial<TicketControlItem> = {}): TicketControlItem => ({
-    shown: true, label, emoji, style, description, who, roleIds: [], confirm: false, reason: false, notice: '', delay: 0, placement: 'button', closedPlacement: 'button', ...more,
+    shown: true, label, emoji, style, description, who, roleIds: [], confirm: false, reason: false, notice: '', delay: 0, placement: 'button', closedPlacement: 'button',
+    noticeStyle: 'text', noticeDesign: simpleDesign(NOTICE_WORDS[label] ?? '{staff} used {option}.'),
+    confirmStyle: 'text', confirmDesign: simpleDesign(CONFIRM_WORDS[label] ?? 'Are you sure?', label === 'Delete' ? '#da373c' : '#1793ff'),
+    ...more,
 });
 
 export const defaultTicketControls = (): TicketControls => ({
@@ -953,6 +1019,19 @@ export const defaultTicketPermissions = (): TicketPermissions => ({
         },
         roles: {},
     },
+    // Claimed: like open, except other support staff only read (the claimer handles it). Off until turned on.
+    claimed: {
+        targets: {
+            everyone: { ViewChannel: 'deny' },
+            owner: { ...VIEW_WRITE },
+            claimer: { ...VIEW_WRITE, ManageMessages: 'allow' },
+            added: { ...VIEW_WRITE },
+            support: { ...VIEW_ONLY },
+            manager: { ...VIEW_WRITE, ManageMessages: 'allow', ManageChannels: 'allow' },
+        },
+        roles: {},
+    },
+    useClaimed: false,
 });
 
 export const defaultWelcome = (): MessageDesign => ({
@@ -1046,9 +1125,11 @@ export function newTicketPanel(name = 'Support'): TicketPanel {
                 { id: SLOT_ID, type: 'slot' },
             ],
         },
+        display: 'buttons',
         placeholder: 'What is your ticket about?',
         blacklistRoleIds: [],
         options: [newTicketOption('Support', '🎫')],
+        infoButtons: [],
         posted: null,
     };
 }
@@ -1080,8 +1161,46 @@ export const newMessageBlock = (kind: MessageBlockKind, infoPanel?: { id: string
     }
 };
 
+export const defaultDmTranscript = (): TranscriptMessage => ({
+    style: 'design',
+    text: '📄 The transcript of your ticket **#{number}** in **{server}**: {link}',
+    design: {
+        ...simpleDesign('Here is the transcript of your ticket **#{number}** in **{server}**.'),
+        embed: { color: '#1793ff', author: '{server}', title: '📄 Your ticket transcript', url: '', description: 'Here is the transcript of your ticket **#{number}** ({channel}).\nOpen it any time with the button below.', fields: [], thumbnail: '', image: '', footer: '' },
+    },
+    attachFile: true,
+    button: { show: true, label: 'Open the transcript', emoji: '📄' },
+});
+
+export const defaultTranscriptPost = (): TranscriptMessage => ({
+    style: 'text',
+    text: '📄 Transcript of **#{channel}**: {link}',
+    design: { ...simpleDesign('📄 Transcript of **#{channel}** (ticket #{number}).'), embed: { color: '#1793ff', author: '', title: '📄 Ticket #{number}', url: '', description: 'The transcript of **#{channel}**.', fields: [], thumbnail: '', image: '', footer: '' } },
+    attachFile: true,
+    button: { show: true, label: 'Open', emoji: '📄' },
+});
+
+/** Older documents kept the DM as a bare design: that becomes the design style, file and button on. */
+function normalizeTranscriptMessage(x: unknown, d: TranscriptMessage): TranscriptMessage {
+    const o = obj(x);
+    if (typeof o.format === 'string') return { ...d, style: 'design', design: o as unknown as MessageDesign };
+    if (!o.style) return d;
+    return { ...d, ...(o as Partial<TranscriptMessage>), button: { ...d.button, ...obj(o.button) } };
+}
+
+export const defaultSleep = (): TicketSleep => ({
+    enabled: false,
+    reminderMinutes: 60,
+    closeMinutes: 1440,
+    who: ['claimer', 'support', 'manager'],
+    roleIds: [],
+    ticketMessage: { ...simpleDesign('{user}, we’re waiting for your answer. This ticket closes in {time} if there’s no reply.', '#f0b232'), content: '{user}' },
+    dmMessage: simpleDesign('Your ticket **#{number}** in **{server}** is waiting for your answer. It closes in {time} if there’s no reply.', '#f0b232'),
+});
+
 export const defaultTicketSettings = (): TicketSettings => ({
-    general: { language: 'en', prefix: '!', ...noPlaces(), transcriptToOwner: true, blacklistRoleIds: [], nextNumber: 1, staffPoints: { enabled: true, perClaim: 1 }, lifecycle: defaultLifecycle() },
+    general: { language: 'en', prefix: '!', ...noPlaces(), transcriptToOwner: true, blacklistRoleIds: [], nextNumber: 1, staffPoints: { enabled: true, perClaim: 1 }, lifecycle: defaultLifecycle(), transcriptPost: defaultTranscriptPost(), dmTranscript: defaultDmTranscript() },
+    sleep: defaultSleep(),
     panels: [],
     come: defaultCome(),
     commands: defaultCommands(),
@@ -1105,11 +1224,15 @@ function normalizeSet(x: unknown, fallback: PermissionSet): PermissionSet {
 function normalizePermissions(x: unknown): TicketPermissions {
     const p = obj(x);
     const d = defaultTicketPermissions();
-    if (p.open || p.closed) return { open: normalizeSet(p.open, d.open), closed: normalizeSet(p.closed, d.closed) };
+    const claimedOf = (open: PermissionSet) => (p.claimed ? normalizeSet(p.claimed, d.claimed) : { ...d.claimed, roles: cloneJson(open.roles) });
+    if (p.open || p.closed) {
+        const open = normalizeSet(p.open, d.open);
+        return { open, closed: normalizeSet(p.closed, d.closed), claimed: claimedOf(open), useClaimed: p.useClaimed === true };
+    }
     if (!p.targets) return d;
     const open = normalizeSet(p, d.open);
     const shut: PermOverwrite = p.closedOwner === 'hidden' ? { ViewChannel: 'deny' } : { ...VIEW_ONLY };
-    return { open, closed: { targets: { ...cloneJson(open.targets), owner: shut, added: shut }, roles: cloneJson(open.roles) } };
+    return { open, closed: { targets: { ...cloneJson(open.targets), owner: shut, added: shut }, roles: cloneJson(open.roles) }, claimed: claimedOf(open), useClaimed: false };
 }
 
 const placementOf = (x: unknown, fallback: ItemPlacement): ItemPlacement => (x === 'menu' || x === 'button' ? x : fallback);
@@ -1150,14 +1273,15 @@ function normalizeControls(x: unknown, askReason: boolean): TicketControls {
     };
 }
 
+/** Only the keys `shape` has (older documents may carry settings that no longer exist). */
+const pickKnown = <T extends object>(o: Loose, shape: T): Partial<T> => Object.fromEntries(Object.keys(shape).filter((k) => k in o).map((k) => [k, o[k]])) as Partial<T>;
+
 function normalizeOverride(x: unknown): TicketLifecycleOverride {
     const o = obj(x);
     return {
         transcriptOnDelete: typeof o.transcriptOnDelete === 'boolean' ? o.transcriptOnDelete : null,
         autoDeleteSeconds: typeof o.autoDeleteSeconds === 'number' ? o.autoDeleteSeconds : null,
         closeConfirm: typeof o.closeConfirm === 'string' ? o.closeConfirm : null,
-        maxImageMB: typeof o.maxImageMB === 'number' ? o.maxImageMB : null,
-        maxImages: typeof o.maxImages === 'number' ? o.maxImages : null,
     };
 }
 
@@ -1199,15 +1323,19 @@ function normalizeOption(x: unknown, askReason: boolean, was: ItemPlacement): Ti
 
 function normalizePanel(x: unknown, askReason: boolean): TicketPanel {
     const { display: _old, info: _info, ...p } = obj(x);
-    // Before placements: every option was a button, or all were in one menu.
-    const was: ItemPlacement = _old === 'menu' ? 'menu' : 'button';
+    // A panel is all buttons or all menu. Saved before that came back: all-menu options mean a menu panel.
+    const rawOptions = arr<Loose>(p.options);
+    const display: TicketPanel['display'] = _old === 'menu' || _old === 'buttons' ? _old : rawOptions.length > 0 && rawOptions.every((o) => obj(o).placement === 'menu') ? 'menu' : 'buttons';
+    const was: ItemPlacement = display === 'menu' ? 'menu' : 'button';
     return {
         ...(p as unknown as TicketPanel),
         channelId: (p.channelId as string | null | undefined) ?? null,
         ...Object.fromEntries(PLACE_KEYS.map((k) => [k, (p[k] as string | null | undefined) ?? null])),
         placeholder: typeof p.placeholder === 'string' ? p.placeholder : 'What is your ticket about?',
         blacklistRoleIds: arr(p.blacklistRoleIds),
-        options: arr(p.options).map((o) => normalizeOption(o, askReason, was)),
+        display,
+        options: rawOptions.map((o) => ({ ...normalizeOption(o, askReason, was), placement: was })),
+        infoButtons: arr<Loose>(p.infoButtons).map((i) => ({ ...newInfoItem(String(obj(i).panelId ?? '')), ...(obj(i) as Partial<TicketInfoItem>) })).filter((i) => i.panelId),
         message: infoAsBlock(_info, (p.message as MessageDesign | undefined) ?? newTicketPanel().message),
         posted: (p.posted as TicketPanel['posted'] | undefined) ?? null,
     };
@@ -1223,7 +1351,8 @@ export function normalizeTicketSettings(raw: unknown): TicketSettings {
     const come = obj(r.come);
     const commands = obj(r.commands);
     return {
-        general: { ...d.general, ...(general as Partial<TicketGeneral>), blacklistRoleIds: arr(g.blacklistRoleIds), staffPoints: { ...d.general.staffPoints, ...obj(g.staffPoints) } as TicketGeneral['staffPoints'], lifecycle: { ...d.general.lifecycle, ...(obj(g.lifecycle) as Partial<TicketLifecycle>) } },
+        general: { ...d.general, ...(general as Partial<TicketGeneral>), blacklistRoleIds: arr(g.blacklistRoleIds), staffPoints: { ...d.general.staffPoints, ...obj(g.staffPoints) } as TicketGeneral['staffPoints'], lifecycle: { ...d.general.lifecycle, ...pickKnown(obj(g.lifecycle), d.general.lifecycle) }, transcriptPost: normalizeTranscriptMessage(g.transcriptPost, d.general.transcriptPost), dmTranscript: normalizeTranscriptMessage(g.dmTranscript, d.general.dmTranscript) },
+        sleep: { ...d.sleep, ...(obj(r.sleep) as Partial<TicketSleep>), roleIds: arr(obj(r.sleep).roleIds), who: Array.isArray(obj(r.sleep).who) ? (obj(r.sleep).who as TicketTarget[]) : d.sleep.who },
         panels: arr(r.panels).map((p) => normalizePanel(p, askReason)),
         come: { ...d.come, ...(come as Partial<TicketCome>), roleIds: arr(come.roleIds), button: { ...d.come.button, ...obj(come.button) } },
         commands: Object.fromEntries(TICKET_COMMANDS.map((c) => [c, { enabled: obj(commands[c]).enabled !== false, aliases: arr<string>(obj(commands[c]).aliases) }])) as TicketSettings['commands'],
@@ -1237,18 +1366,20 @@ export function normalizeTicketSettings(raw: unknown): TicketSettings {
 /** Where a ticket of this option goes: its own choice, else the panel's, else the server's. Blacklists add up. */
 export function resolvePlaces(g: TicketGeneral, p: TicketPanel, o: TicketOption): TicketPlaces & { blacklistRoleIds: Snowflake[] } {
     const pick = (k: PlaceKey) => o[k] ?? p[k] ?? g[k] ?? null;
+    // The log and transcript channels are set on the panel (and in Settings), not per ticket option.
+    const panelOrServer = (k: PlaceKey) => p[k] ?? g[k] ?? null;
     return {
         categoryId: pick('categoryId'),
         closedCategoryId: pick('closedCategoryId'),
-        logChannelId: pick('logChannelId'),
-        transcriptChannelId: pick('transcriptChannelId'),
+        logChannelId: panelOrServer('logChannelId'),
+        transcriptChannelId: panelOrServer('transcriptChannelId'),
         blacklistRoleIds: [...new Set([...g.blacklistRoleIds, ...p.blacklistRoleIds])],
     };
 }
 
 /** Where a place's value comes from, for the dashboard's "from the panel / from Settings" hints. */
 export function placeSource(g: TicketGeneral, p: TicketPanel | null, o: TicketOption | null, k: PlaceKey): { id: Snowflake | null; from: 'option' | 'panel' | 'server' | null } {
-    if (o?.[k]) return { id: o[k], from: 'option' };
+    if (o?.[k] && k !== 'logChannelId' && k !== 'transcriptChannelId') return { id: o[k], from: 'option' };
     if (p?.[k]) return { id: p[k], from: 'panel' };
     if (g[k]) return { id: g[k], from: 'server' };
     return { id: null, from: null };
@@ -1256,7 +1387,7 @@ export function placeSource(g: TicketGeneral, p: TicketPanel | null, o: TicketOp
 
 /* ------------------------------------------------------------------ variables */
 
-export type VariableContext = 'panel' | 'ticket' | 'closed' | 'notice' | 'come';
+export type VariableContext = 'panel' | 'ticket' | 'closed' | 'notice' | 'come' | 'sleep' | 'dm';
 
 /** The words a message can use; the bot fills them in. */
 export function ticketVariables(ctx: VariableContext): readonly (readonly [string, string])[] {
@@ -1274,6 +1405,8 @@ export function ticketVariables(ctx: VariableContext): readonly (readonly [strin
     if (ctx === 'closed') return [...ticket, ['{closer}', 'Mentions who closed it'], ['{reason}', 'The reason given (or “No reason”)']];
     if (ctx === 'notice') return [...ticket, ['{staff}', 'Mentions who pressed it'], ['{member}', 'The member added, removed or given the ticket'], ['{name}', 'The new channel name']];
     if (ctx === 'come') return [...ticket, ['{staff}', 'Mentions who called them']];
+    if (ctx === 'sleep') return [...ticket, ['{staff}', 'Mentions who answered last (or used /sleep)'], ['{time}', 'How long until it closes']];
+    if (ctx === 'dm') return [['{number}', 'The ticket number'], ['{channel}', 'The ticket channel’s name'], ['{server}', 'The server’s name'], ['{link}', 'The transcript link']];
     return ticket;
 }
 
@@ -1316,12 +1449,13 @@ export function panelFromTemplate(t: Pick<TicketTemplate, 'panel' | 'guildId' | 
         channelId: same ? p.channelId : null,
         blacklistRoleIds: same ? p.blacklistRoleIds : [],
         posted: null,
+        infoButtons: same ? p.infoButtons : [],
         options: p.options.map((o) => ({
             ...clearPlaces(o),
             id: panelId('o'),
             supportRoleIds: same ? o.supportRoleIds : [],
             managerRoleIds: same ? o.managerRoleIds : [],
-            permissions: same ? o.permissions : { open: { ...o.permissions.open, roles: {} }, closed: { ...o.permissions.closed, roles: {} } },
+            permissions: same ? o.permissions : { ...o.permissions, open: { ...o.permissions.open, roles: {} }, closed: { ...o.permissions.closed, roles: {} }, claimed: { ...o.permissions.claimed, roles: {} } },
             controls: same ? o.controls : { ...o.controls, items: Object.fromEntries(TICKET_ACTIONS.map((a) => [a, { ...o.controls.items[a], roleIds: [] }])) as unknown as TicketControls['items'] },
         })),
     };
@@ -1341,6 +1475,7 @@ function messageErrors(m: MessageDesign, where: string): string[] {
     } else {
         const slots = m.blocks.filter((b) => b.type === 'slot').length;
         if (slots !== 1) out.push(`${where}: the buttons block must be there exactly once.`);
+        if (m.blocks.filter((b) => b.type === 'slotMenu').length > 1) out.push(`${where}: the menu block can be there only once.`);
         const text = m.blocks.reduce((n, b) => n + (b.type === 'text' || b.type === 'thumbText' ? b.content.length : 0), 0);
         if (text > PANEL_LIMITS.text) out.push(`${where}: the text is over ${PANEL_LIMITS.text} characters.`);
         if (!m.blocks.some((b) => (b.type === 'text' || b.type === 'thumbText') && !blank(b.content)) && !m.blocks.some((b) => b.type === 'image' && b.url)) out.push(`${where}: write something in it.`);
@@ -1396,10 +1531,6 @@ function lifecycleErrors(l: Partial<TicketLifecycle> | TicketLifecycleOverride, 
     const out: string[] = [];
     const s = l.autoDeleteSeconds;
     if (s !== null && s !== undefined && (!Number.isInteger(s) || s < 0 || s > TICKET_LIMITS.autoDelete)) out.push(`${where}: auto-delete is 0 to ${TICKET_LIMITS.autoDelete.toLocaleString('en')} seconds (7 days).`);
-    const mb = l.maxImageMB;
-    if (mb !== null && mb !== undefined && (!Number.isFinite(mb) || mb < 0 || mb > TICKET_LIMITS.imageMB)) out.push(`${where}: the picture size limit is 0 to ${TICKET_LIMITS.imageMB} MB.`);
-    const n = l.maxImages;
-    if (n !== null && n !== undefined && (!Number.isInteger(n) || n < 0 || n > TICKET_LIMITS.images)) out.push(`${where}: pictures per ticket are 0 to ${TICKET_LIMITS.images}.`);
     if (typeof l.closeConfirm === 'string' && l.closeConfirm.length > TICKET_LIMITS.confirmText) out.push(`${where}: the close confirmation is over ${TICKET_LIMITS.confirmText} characters.`);
     return out;
 }
@@ -1433,7 +1564,9 @@ export function validateTicketPanel(p: TicketPanel): string[] {
     const out: string[] = [];
     if (blank(p.name)) out.push('Give the panel a name.');
     if (!p.options.length) out.push(`“${p.name}”: add at least one ticket option.`);
-    out.push(...slotErrors(p.options.map((o) => o.placement), `“${p.name}”`));
+    if (p.display === 'menu' && p.options.length > TICKET_LIMITS.menuOptions) out.push(`“${p.name}”: a menu holds up to ${TICKET_LIMITS.menuOptions} options.`);
+    if (p.display === 'buttons' && p.options.length + p.infoButtons.length > TICKET_LIMITS.buttonOptions) out.push(`“${p.name}”: up to ${TICKET_LIMITS.buttonOptions} buttons (ticket options and info buttons together).`);
+    for (const i of p.infoButtons) if (blank(i.label) && blank(i.emoji)) out.push(`“${p.name}”: an info button needs a label or an emoji.`);
     if (p.placeholder.length > TICKET_LIMITS.placeholder) out.push(`“${p.name}”: the menu placeholder is too long.`);
     out.push(...messageErrors(p.message, `“${p.name}”`));
     for (const o of p.options) out.push(...validateTicketOption(o));
@@ -1452,9 +1585,25 @@ export function validateTicketSection(section: TicketSectionKey, value: unknown)
         const sp = g.staffPoints;
         if (!sp || typeof sp.enabled !== 'boolean' || !Number.isInteger(sp.perClaim) || sp.perClaim < 1 || sp.perClaim > 100) out.push('Staff points for a claim are 1 to 100.');
         out.push(...lifecycleErrors(g.lifecycle ?? {}, 'Closing defaults'));
+        for (const [m, where] of [[g.transcriptPost, 'The transcript channel message'], [g.dmTranscript, 'The transcript direct message']] as const) {
+            if (!m) continue;
+            if (m.style === 'design') out.push(...messageErrors(m.design, where));
+            else if (blank(m.text) || m.text.length > TICKET_LIMITS.content) out.push(`${where}: write its text (up to ${TICKET_LIMITS.content} characters).`);
+            if (m.button.show && blank(m.button.label) && blank(m.button.emoji)) out.push(`${where}: the button needs a label or an emoji.`);
+        }
         return out;
     }
     if (section === 'profile') return validateProfile(value as BotProfile);
+    if (section === 'sleep') {
+        const z = value as TicketSleep;
+        const out: string[] = [];
+        const ok = (n: number) => Number.isInteger(n) && n >= 1 && n <= TICKET_LIMITS.sleepMinutes;
+        if (!ok(z.reminderMinutes) || !ok(z.closeMinutes)) out.push(`Sleep times are 1 to ${TICKET_LIMITS.sleepMinutes.toLocaleString('en')} minutes.`);
+        else if (z.reminderMinutes >= z.closeMinutes) out.push('The reminder must come before the ticket closes.');
+        out.push(...messageErrors(z.ticketMessage, 'The message in the ticket'));
+        out.push(...messageErrors(z.dmMessage, 'The direct message'));
+        return out;
+    }
     if (section === 'come') {
         const c = value as TicketCome;
         const out: string[] = [];

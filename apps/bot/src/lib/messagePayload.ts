@@ -114,11 +114,15 @@ function embedJson(e: PanelEmbed, vars: Vars, files: Files): Record<string, unkn
     };
 }
 
+const isMenuRow = (r: Row) => (r.components[0] as { type?: number } | undefined)?.type === 3;
+
 /** The whole message. `slot` is the interactive rows; `mentions` lists who may actually be pinged. */
 export function renderMessage(m: MessageDesign, vars: Vars, slot: Row[], mentions: Payload["allowedMentions"] = { parse: [] }): Payload {
     const files = new Files();
     if (m.format === "components") {
         const children: Record<string, unknown>[] = [];
+        // The controls' menu can sit in a block of its own (moved anywhere); without one it follows the buttons.
+        const split = m.blocks.some((b) => b.type === "slotMenu");
         for (const b of m.blocks) {
             if (b.type === "text" && b.content.trim()) children.push({ type: 10, content: fill(b.content, vars) });
             else if (b.type === "image" && b.url) children.push({ type: 12, items: [{ media: { url: files.url(b.url) } }] });
@@ -127,7 +131,8 @@ export function renderMessage(m: MessageDesign, vars: Vars, slot: Row[], mention
                     ? { type: 9, components: [{ type: 10, content: fill(b.content, vars) }], accessory: { type: 11, media: { url: files.url(b.thumbnail) } } }
                     : { type: 10, content: fill(b.content, vars) });
             } else if (b.type === "separator") children.push({ type: 14, divider: b.divider, spacing: b.spacing });
-            else if (b.type === "slot") children.push(...slot);
+            else if (b.type === "slot") children.push(...(split ? slot.filter((r) => !isMenuRow(r)) : slot));
+            else if (b.type === "slotMenu") children.push(...slot.filter(isMenuRow));
             else if (b.type === "info") children.push(...infoRows(b));
         }
         if (!m.blocks.some((b) => b.type === "slot")) children.push(...slot);

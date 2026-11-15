@@ -1,7 +1,7 @@
 import { MessageFlags, SlashCommandBuilder, type ChatInputCommandInteraction, type GuildMember } from "discord.js";
 import { SettingsRepository } from "@robo/db";
 import { t, type TicketCommand } from "@robo/shared";
-import { ACTIONS, runCome, runControl } from "@/ticket/actions";
+import { ACTIONS, runCome, runControl, runSleep } from "@/ticket/actions";
 import { fromInteraction } from "./invocation";
 
 // The slash commands, one per ticket control (/close, /claim, /rename…) and /come. Discord has no Arabic locale for
@@ -21,6 +21,7 @@ const DESCRIPTIONS: Record<TicketCommand, string> = {
     reopen: "Reopen this closed ticket · إعادة فتح التذكرة",
     delete: "Delete this ticket channel · حذف التذكرة",
     come: "Call the owner back with a direct message · استدعاء صاحب التذكرة",
+    sleep: "Remind the owner now and start the sleep countdown · تذكير صاحب التذكرة",
 };
 
 export function ticketCommand(command: TicketCommand) {
@@ -39,6 +40,7 @@ export function ticketCommand(command: TicketCommand) {
             await interaction.deferReply({ flags: MessageFlags.Ephemeral });
             const target = interaction.options.getMember("member") as GuildMember | null;
             if (command === "come") return runCome(fromInteraction(interaction, { target }));
+            if (command === "sleep") return runSleep(fromInteraction(interaction));
             const args = {
                 ...(command === "close" ? { reason: interaction.options.getString("reason") } : {}),
                 ...(command === "rename" ? { name: interaction.options.getString("name") } : {}),

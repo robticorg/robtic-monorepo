@@ -2,6 +2,7 @@ import { Events, type Client } from "discord.js";
 import { Logger } from "@robo/logger";
 import { startPanelPoster } from "@/ticket/PanelPoster";
 import { startAutoDelete } from "@/ticket/AutoDelete";
+import { startSleep } from "@/ticket/Sleep";
 import { isGuildAllowed, onAccessChange, onBlockedChange } from "@robo/config/remote";
 
 /** Logged in: start posting the panels the dashboard asks for. */
@@ -12,6 +13,7 @@ export default {
         Logger.success(`Robtic Ticket is online as ${client.user.tag} in ${client.guilds.cache.size} server(s)`);
         startPanelPoster(client);
         startAutoDelete(client);
+        startSleep(client);
         // Servers it may not be in (blocked in the admin console, or not on the shared allowlist unless the bot is open
         // to everyone): leave now, and whenever either list changes.
         const leaveNotAllowed = () => {

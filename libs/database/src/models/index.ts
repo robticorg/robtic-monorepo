@@ -68,6 +68,11 @@ const ticketSchema = new Schema(
         deleteAt: { type: Date, default: null },
         /** Pictures posted so far (for the per-ticket limit). */
         imageCount: { type: Number, default: 0 },
+        /** Sleep: since when the last message isn't the owner's (null: the owner wrote last), when the reminder went, and
+         *  when the ticket closes for no answer (set by the reminder or by /sleep). */
+        ownerQuietSince: { type: Date, default: null },
+        sleepRemindedAt: { type: Date, default: null },
+        sleepCloseAt: { type: Date, default: null },
     },
     { timestamps: true },
 );

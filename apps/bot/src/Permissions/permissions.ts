@@ -25,7 +25,8 @@ export interface TicketPeople {
 }
 
 export function ticketOverwrites(guild: Guild, option: TicketOption, people: TicketPeople): OverwriteResolvable[] {
-    const p = option.permissions[people.closed ? "closed" : "open"];
+    // Closed, else claimed (when the option gives claimed tickets their own set), else open.
+    const p = option.permissions[people.closed ? "closed" : option.permissions.useClaimed && people.claimerId ? "claimed" : "open"];
     const list: OverwriteResolvable[] = [];
     push(list, guild.roles.everyone.id, OverwriteType.Role, p.targets.everyone);
     for (const id of option.supportRoleIds) push(list, id, OverwriteType.Role, p.targets.support);

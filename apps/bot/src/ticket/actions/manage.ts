@@ -3,6 +3,8 @@ import { resolveLifecycle, t, type TicketAction } from "@robo/shared";
 import { check, type Result } from "..";
 import type { TicketContext } from "../types";
 import { contextOf } from "../utils";
+import { renderMessage, type Payload } from "@/lib/messagePayload";
+import { varsOf } from "../TicketEmbed";
 
 // One control, however it was asked for: a button, the controls menu, a slash command or a typed command. Each action
 // file gets the same "invocation": who, where, how to answer, and (for commands) its arguments. Buttons ask for what
@@ -15,11 +17,11 @@ export interface Invocation {
     /** Answers the person (privately for buttons and slash commands, in the channel for typed commands). */
     reply: (text: string, files?: Result["files"]) => Promise<void>;
     /** Posts in the ticket for everyone (what changed). */
-    announce: (text: string) => Promise<void>;
+    announce: (message: string | Payload) => Promise<void>;
     /** Buttons and menus can open a popup; commands cannot. */
     showModal?: (modal: APIModalInteractionResponseCallbackData) => Promise<void>;
     /** Buttons and menus can ask "are you sure?" with a Yes button. */
-    confirm?: (action: TicketAction, question: string) => Promise<void>;
+    confirm?: (action: TicketAction, question: string | Payload) => Promise<void>;
     args: { reason?: string | null; name?: string | null; target?: GuildMember | null; confirmed?: boolean };
 }
 
@@ -28,7 +30,8 @@ export type ActionFn = (inv: Invocation, ctx: TicketContext) => Promise<void>;
 /** Answers with the result: in the channel when something changed for everyone, else only to the person. */
 export async function finish(inv: Invocation, r: Result) {
     if (r.ok) {
-        if (r.text) await inv.announce(r.text);
+        if (r.payload) await inv.announce(r.payload);
+        else if (r.text) await inv.announce(r.text);
         await inv.reply("✅", r.files);
     } else await inv.reply(r.text, r.files);
 }
@@ -36,6 +39,12 @@ export async function finish(inv: Invocation, r: Result) {
 /** Asks first when the option wants a confirmation and this came from a button (commands are deliberate already). */
 export async function askFirst(inv: Invocation, ctx: TicketContext, action: "close" | "delete"): Promise<boolean> {
     if (inv.args.confirmed || !inv.confirm || !ctx.option?.controls.items[action].confirm) return false;
+    // A designed confirmation (embed or components) when the control has one.
+    const item = ctx.option?.controls.items[action];
+    if (item?.confirmStyle === "design") {
+        await inv.confirm(action, renderMessage(item.confirmDesign, await varsOf(inv.channel.guild, ctx), [], { users: [], roles: [] }));
+        return true;
+    }
     // Close: the dashboard's own wording when it has one (the option's, else the server's).
     const custom = action === "close" ? resolveLifecycle(ctx.settings.general, ctx.option).closeConfirm.trim() : "";
     await inv.confirm(action, custom || t(ctx.settings.general.language, action === "close" ? "confirm.close" : "confirm.delete"));
