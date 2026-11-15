@@ -1,4 +1,4 @@
-import { Events, MessageFlags, type ButtonInteraction, type GuildMember, type Interaction, type StringSelectMenuInteraction } from "discord.js";
+import { Events, MessageFlags, type ButtonInteraction, type GuildMember, type Interaction, type Message, type StringSelectMenuInteraction } from "discord.js";
 import { Logger } from "@robo/logger";
 import { SettingsRepository } from "@robo/db";
 import { resolvePlaces, t, TICKET_ACTIONS, type TicketAction } from "@robo/shared";
@@ -16,6 +16,20 @@ import { isTicketId } from "../utils";
 
 const settings = new SettingsRepository();
 const isAction = (v: string): v is TicketAction => (TICKET_ACTIONS as readonly string[]).includes(v);
+
+// Discord keeps a member's pick showing in a menu. Shortly after each pick the message is redrawn with its current
+// components, so the menu is empty again for the next choice. Picks close together on one message share one redraw,
+// and the message is read again first so a change an action just made (a ticket closing) is never undone.
+const RESET_MS = 1500;
+const resetting = new Map<string, ReturnType<typeof setTimeout>>();
+function resetMenu(message: Message) {
+    if (resetting.has(message.id)) return;
+    resetting.set(message.id, setTimeout(async () => {
+        resetting.delete(message.id);
+        const fresh = await message.fetch(true).catch(() => null);
+        if (fresh?.editable) await fresh.edit({ components: fresh.components }).catch((e) => Logger.warn(`[TicketHandler] menu reset: ${e}`));
+    }, RESET_MS));
+}
 
 async function openFromPanel(interaction: ButtonInteraction<"cached"> | StringSelectMenuInteraction<"cached">, panelId: string, optionId: string) {
     const s = await settings.get(interaction.guildId);
@@ -38,6 +52,7 @@ export default {
         if (!(interaction.isButton() || interaction.isStringSelectMenu())) return;
         if (!interaction.inCachedGuild() || !isTicketId(interaction.customId)) return;
         const id = interaction.customId;
+        if (interaction.isStringSelectMenu()) resetMenu(interaction.message);
         try {
             const [, kind, a, b] = id.split(":");
             if (interaction.isButton() && kind === "o" && a && b) return await openFromPanel(interaction, a, b);
