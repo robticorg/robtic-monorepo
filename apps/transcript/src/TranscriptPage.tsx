@@ -1,5 +1,5 @@
 import { Download, Globe, Info, Languages, Lock } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { TicketTranscriptDocument } from '@robo/shared';
 import { Copyright, DetailsDialog, ExportDialog, ImageViewerProvider, LOGO_DATA_URI, SafeImage, TranscriptMessages, useDefaultLocale, useLocale } from '@robo/transcript';
 
@@ -62,10 +62,23 @@ function ShareButton({ id, access, onChange, ar }: { id: string; access: Access;
     };
     const label = access.public ? (ar ? 'عام: لكل من لديه الرابط' : 'Public: anyone with the link') : (ar ? 'خاص: للمسؤولين فقط' : 'Private: administrators only');
     const hint = access.public ? (ar ? 'اضغط لجعله خاصًا' : 'Click to make it private') : (ar ? 'اضغط لمشاركته مع كل من لديه الرابط' : 'Click to share it with anyone who has the link');
+    // Making it public shows the conversation to anyone with the link: asked first. Private again needs no question.
+    const dialog = useRef<HTMLDialogElement>(null);
+    const click = () => (access.public ? void flip() : dialog.current?.showModal());
     return (
-        <button type="button" className={`share-button${access.public ? ' on' : ''}`} disabled={busy} onClick={() => void flip()} aria-pressed={access.public} title={hint}>
-            {access.public ? <Globe size={16} /> : <Lock size={16} />}<span>{label}</span>
-        </button>
+        <>
+            <button type="button" className={`share-button${access.public ? ' on' : ''}`} disabled={busy} onClick={click} aria-pressed={access.public} title={hint}>
+                {access.public ? <Globe size={16} /> : <Lock size={16} />}<span>{label}</span>
+            </button>
+            <dialog ref={dialog} className="share-confirm" dir={ar ? 'rtl' : 'ltr'} aria-labelledby="share-confirm-title" onClick={(e) => { if (e.target === dialog.current) dialog.current?.close(); }}>
+                <h2 id="share-confirm-title">{ar ? 'جعل هذا السجل عامًا؟' : 'Make this transcript public?'}</h2>
+                <p>{ar ? 'سيتمكن أي شخص لديه الرابط من قراءة المحادثة كاملة دون تسجيل الدخول. ويمكنكم إعادته خاصًا في أي وقت.' : 'Anyone with the link will be able to read the whole conversation, without signing in. You can make it private again at any time.'}</p>
+                <div className="share-confirm-actions">
+                    <button type="button" className="share-confirm-cancel" autoFocus onClick={() => dialog.current?.close()}>{ar ? 'إلغاء' : 'Cancel'}</button>
+                    <button type="button" className="share-confirm-yes" onClick={() => { dialog.current?.close(); void flip(); }}>{ar ? 'جعله عامًا' : 'Make it public'}</button>
+                </div>
+            </dialog>
+        </>
     );
 }
 

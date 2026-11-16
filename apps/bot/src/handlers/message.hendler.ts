@@ -1,7 +1,7 @@
 import { COMMAND_WORDS, TICKET_COMMANDS, type TicketCommand, type TicketSettings } from "@robo/shared";
 
-// Typed commands: the server's prefix, then the command in English or Arabic (!close, !اغلاق…) or one of the server's
-// extra words for it (Commands page), then its argument.
+// Typed commands: the server's prefix, then one of the command's words (Commands page; they start as the English and
+// Arabic names, !close, !اغلاق…), then its argument.
 
 const BUILT_IN = new Map<string, TicketCommand>();
 for (const c of TICKET_COMMANDS) {
@@ -24,8 +24,15 @@ export function parseCommand(content: string, prefix: string, commands?: TicketS
     const body = content.slice(prefix.length).trim();
     const [raw = "", ...rest] = body.split(/\s+/);
     const word = raw.toLowerCase();
-    let command = BUILT_IN.get(word);
-    if (!command && commands) command = TICKET_COMMANDS.find((c) => commands[c]?.aliases.some((a) => a.toLowerCase() === word));
+    // The server's list (Commands page) is the whole set of words once saved that way: a removed name stops working.
+    // Without settings (or an old document), the built-in English and Arabic names.
+    const own = (c: TicketCommand) => commands?.[c]?.words === true;
+    let command = TICKET_COMMANDS.find((c) => own(c) && commands![c].aliases.some((a) => a.toLowerCase() === word));
+    if (!command) {
+        const built = BUILT_IN.get(word);
+        if (built && !own(built)) command = built;
+    }
+    if (!command && commands) command = TICKET_COMMANDS.find((c) => !own(c) && commands[c]?.aliases.some((a) => a.toLowerCase() === word));
     if (!command) return null;
     return { command, enabled: commands?.[command]?.enabled !== false, rest: rest.join(" ").trim() };
 }

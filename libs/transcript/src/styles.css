@@ -1507,3 +1507,13 @@ span.reaction {
 .share-button.on { color: #23a55a; border-color: color-mix(in srgb, #23a55a 45%, transparent); background: color-mix(in srgb, #23a55a 12%, transparent); }
 .share-button:disabled { opacity: 0.6; cursor: progress; }
 @media (max-width: 640px) { .share-button span { display: none; } .share-button { padding: 0 9px; } }
+/* "Make this transcript public?" asked before sharing */
+.share-confirm { width: min(420px, calc(100vw - 32px)); padding: 20px; border: 1px solid var(--surface-3); border-radius: 14px; background: var(--surface-2, #2b2d31); color: var(--text); box-shadow: 0 24px 60px -16px rgba(0, 0, 0, .8); }
+.share-confirm::backdrop { background: rgba(0, 0, 0, .6); }
+.share-confirm h2 { margin: 0 0 8px; font-size: 1.05rem; color: var(--text-strong); }
+.share-confirm p { margin: 0; line-height: 1.55; color: var(--muted); font-size: 0.9rem; }
+.share-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.share-confirm-actions button { height: 36px; padding: 0 16px; border-radius: 8px; border: 0; font: inherit; font-size: 0.875rem; font-weight: 600; cursor: pointer; }
+.share-confirm-cancel { background: var(--surface-3); color: var(--text); }
+.share-confirm-yes { background: var(--accent, #5865f2); color: #fff; }
+.share-confirm-yes:hover, .share-confirm-cancel:hover { filter: brightness(1.1); }

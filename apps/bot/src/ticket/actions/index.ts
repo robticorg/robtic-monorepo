@@ -9,11 +9,12 @@ import { renameTicket } from "./rename";
 import { reopenTicket } from "./reopen";
 import { transcriptTicket } from "./transcript";
 import { transferTicket } from "./transfer";
+import { runCome } from "./come";
+import { runSleep } from "./sleep";
 
 export { closeTicket, reopenTicket, deleteTicket, claimTicket, addMember, removeMember, renameTicket, transferTicket, transcriptTicket };
 export { runControl, type Invocation, type ActionFn } from "./manage";
-export { runCome } from "./come";
-export { runSleep } from "./sleep";
+export { runCome, runSleep };
 
 /** Every control's implementation, by action. */
 export const ACTIONS: Record<TicketAction, ActionFn> = {
@@ -24,6 +25,9 @@ export const ACTIONS: Record<TicketAction, ActionFn> = {
     remove: removeMember,
     transfer: transferTicket,
     transcript: transcriptTicket,
+    // Their own pages decide who may (runControl lets them through to it).
+    come: (inv) => runCome(inv),
+    sleep: (inv) => runSleep(inv),
     reopen: reopenTicket,
     delete: deleteTicket,
 };
