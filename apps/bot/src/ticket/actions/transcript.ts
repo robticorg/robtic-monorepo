@@ -5,6 +5,6 @@ import type { ActionFn } from "./manage";
 /** Saves the transcript now; the link (and the HTML file) go to the person who asked. */
 export const transcriptTicket: ActionFn = async (inv, ctx) => {
     await inv.reply(t(ctx.settings.general.language, "transcript.saving"));
-    const r = await ticketService.transcript(inv.channel, ctx);
+    const r = await ticketService.transcript(inv.channel, ctx, inv.member);
     await inv.reply(r.text, r.files);
 };

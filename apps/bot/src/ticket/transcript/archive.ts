@@ -11,6 +11,10 @@ import { renderMessage, type Row } from "@/lib/messagePayload";
 // A ticket's transcript: every captured message folded into one self-contained document (Credora's archive builder,
 // adapted to tickets), saved under an unguessable id, then sent where the server wants it: the transcript channel, the
 // owner's DMs. Each copy carries the link to the transcript page (when TRANSCRIPT_BASE_URL is set) and the HTML file.
+//
+// It goes out once: at the ticket's first close. That version is also kept as the owner's copy, which the owner (and a
+// public link) keeps seeing on the same page; later saves (reopened, closed again, deleted) only update the full copy
+// the server's administrators see, and send nothing.
 
 const tickets = new TicketRepository();
 const transcripts = new TranscriptRepository();
@@ -140,14 +144,21 @@ function transcriptMessage(m: TranscriptMessage, vars: Record<string, string>, u
     return { ...p, files: [...(p.files ?? []), ...files] };
 }
 
-export async function archiveTicket(guild: Guild, channelId: string, { post }: { post: boolean }) {
+export async function archiveTicket(guild: Guild, channelId: string, { post, forOwner = false }: { post: boolean; forOwner?: boolean }) {
     const ticket = await tickets.byChannel(channelId);
     if (!ticket) return null;
+    // The owner asking after the first close: the copy they were sent, not what happened since.
+    if (forOwner && ticket.transcriptSentAt && ticket.transcriptId) {
+        const kept = (await transcripts.byPublicId(ticket.transcriptId))?.ownerDocument as TicketTranscriptDocument | null | undefined;
+        if (kept) return { id: ticket.transcriptId, url: transcriptUrl(ticket.transcriptId), file: { attachment: Buffer.from(await transcriptHtml(kept), "utf8"), name: exportFilename(kept, "html") } };
+    }
     const id = ticket.transcriptId ?? newTranscriptId();
     const doc = await buildDocument(guild, channelId, id);
     if (!doc) return null;
     // Discord's attachment links expire: keep the pictures in R2 and point the transcript there.
     await keepPictures(doc, guild.id);
+    // The first close: the only time it's sent, and the version the owner keeps seeing.
+    const first = post && !ticket.transcriptSentAt;
     const owner = doc.users[ticket.ownerId];
     const claimer = ticket.claimerId ? doc.users[ticket.claimerId] : null;
     await transcripts.save({
@@ -155,15 +166,15 @@ export async function archiveTicket(guild: Guild, channelId: string, { post }: {
         ownerId: ticket.ownerId, ownerName: owner?.displayName ?? owner?.username ?? ticket.ownerId,
         claimerId: ticket.claimerId ?? null, claimerName: claimer ? claimer.displayName ?? claimer.username : null,
         participantIds: [...new Set(doc.ticket.participants.map((p) => p.userId))], messageCount: doc.stats.messageCount,
-        openedAt: ticket.openedAt ?? null, closedAt: new Date(), document: doc,
+        openedAt: ticket.openedAt ?? null, closedAt: new Date(), document: doc, ...(first ? { ownerDocument: doc } : {}),
     });
-    if (!ticket.transcriptId) await tickets.update(channelId, { transcriptId: id });
+    if (!ticket.transcriptId || first) await tickets.update(channelId, { transcriptId: id, ...(first ? { transcriptSentAt: new Date() } : {}) });
 
     const url = transcriptUrl(id);
     const html = await transcriptHtml(doc);
     const file = { attachment: Buffer.from(html, "utf8"), name: exportFilename(doc, "html") };
 
-    if (post) {
+    if (first) {
         const s = await settings.get(guild.id);
         const vars = { number: String(ticket.number).padStart(4, "0"), channel: ticket.channelName, server: guild.name, link: url ?? "" };
         // The ticket's panel's transcript channel, else the server's.

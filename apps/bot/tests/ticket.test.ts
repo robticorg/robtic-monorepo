@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { defaultCommands, defaultTicketControls, missingArabic, durationText, newButton, newInfoBlock, newInfoItem, newPanel, resolveLifecycle, resolveManagerRoles, resolveSupportRoles, newQuestion, normalizeTicketSettings, newTicketOption, newTicketPanel, overwriteBits, t, validateTicketPanel } from "@robo/shared";
+import { defaultCommands, defaultTicketControls, missingArabic, durationText, newButton, newInfoBlock, newInfoItem, newPanel, designImageCount, resolveLifecycle, resolveManagerRoles, resolveSupportRoles, newQuestion, normalizeTicketSettings, newTicketOption, newTicketPanel, overwriteBits, t, validateTicketPanel } from "@robo/shared";
 import { mentionedId, parseCommand } from "../src/handlers/message.hendler";
 import { emojiOf, renderMessage } from "../src/lib/messagePayload";
 import { controlRows } from "../src/Permissions/buttons";
@@ -292,5 +292,17 @@ describe("support roles cascade", () => {
         const c = defaultTicketControls();
         expect(c.items.come.shown).toBe(true);
         expect(c.items.sleep.shown).toBe(true);
+    });
+});
+
+describe("pictures in a designed message", () => {
+    test("up to 2 in components; a third is refused", () => {
+        const p = newTicketPanel();
+        const m = p.options[0]!.welcome;
+        const two = { ...m, format: "components" as const, blocks: [...m.blocks, { id: "i1", type: "image" as const, url: "https://x/a.png" }, { id: "i2", type: "thumbText" as const, content: "Hi", thumbnail: "https://x/b.png" }] };
+        expect(designImageCount(two)).toBe(2);
+        expect(validateTicketPanel({ ...p, options: [{ ...p.options[0]!, welcome: two }] }).some((e) => e.includes("pictures per message"))).toBe(false);
+        const three = { ...two, blocks: [...two.blocks, { id: "i3", type: "image" as const, url: "https://x/c.png" }] };
+        expect(validateTicketPanel({ ...p, options: [{ ...p.options[0]!, welcome: three }] }).some((e) => e.includes("pictures per message"))).toBe(true);
     });
 });

@@ -64,10 +64,10 @@ const ticketSchema = new Schema(
         /** Renames and topic changes, for the transcript. */
         channelEvents: { type: [{ type: { type: String }, from: String, to: String, at: Date, _id: false }], default: [] },
         transcriptId: { type: String, default: null },
+        /** When the transcript went to the transcript channel and the owner (the first close only; never again). */
+        transcriptSentAt: { type: Date, default: null },
         /** Closed with auto-delete on: when the channel goes (a sweep deletes it; reopening clears it). */
         deleteAt: { type: Date, default: null },
-        /** Pictures posted so far (for the per-ticket limit). */
-        imageCount: { type: Number, default: 0 },
         /** Sleep: since when the last message isn't the owner's (null: the owner wrote last), when the reminder went, and
          *  when the ticket closes for no answer (set by the reminder or by /sleep). */
         ownerQuietSince: { type: Date, default: null },
@@ -136,7 +136,10 @@ const transcriptSchema = new Schema(
         messageCount: Number,
         openedAt: Date,
         closedAt: { type: Date, index: true },
+        /** Everything, for the server's administrators (updated on every save). */
         document: { type: Mixed, required: true },
+        /** The transcript as it was at the first close, for everyone else (the owner, a public link). Never updated. */
+        ownerDocument: { type: Mixed, default: null },
     },
     { timestamps: true, minimize: false },
 );

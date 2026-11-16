@@ -86,13 +86,6 @@ export class TicketRepository {
         return TicketModel.find({ status: 'closed', deleteAt: { $ne: null, $lte: now } }).limit(50).lean<TicketDoc[]>().catch(() => [] as TicketDoc[]);
     }
 
-    /** Adds pictures to a ticket's count unless that would pass `max` (0 = no limit). True when they fit. */
-    async addImages(channelId: string, n: number, max: number): Promise<boolean> {
-        const filter = max > 0 ? { channelId, imageCount: { $lte: max - n } } : { channelId };
-        const r = await TicketModel.updateOne(filter, { $inc: { imageCount: n } }).catch(() => null);
-        return Boolean(r?.modifiedCount);
-    }
-
     /** The member's open tickets from one option (for the per-member limit). */
     openOf(guildId: string, ownerId: string, optionId: string) {
         return TicketModel.find({ guildId, ownerId, optionId, status: 'open' }).lean<TicketDoc[]>();
@@ -162,7 +155,7 @@ export class TranscriptRepository {
         return TranscriptEditModel.find({ channelId }).sort({ at: 1 }).lean();
     }
 
-    save(data: { publicId: string; guildId: string; channelId: string; ticketNumber: number; channelName: string; panelName: string; optionLabel: string; ownerId: string; ownerName: string; claimerId: string | null; claimerName: string | null; participantIds: string[]; messageCount: number; openedAt: Date | null; closedAt: Date; document: unknown }) {
+    save(data: { publicId: string; guildId: string; channelId: string; ticketNumber: number; channelName: string; panelName: string; optionLabel: string; ownerId: string; ownerName: string; claimerId: string | null; claimerName: string | null; participantIds: string[]; messageCount: number; openedAt: Date | null; closedAt: Date; document: unknown; ownerDocument?: unknown }) {
         return TranscriptModel.findOneAndUpdate({ publicId: data.publicId }, { $set: data }, { upsert: true, new: true }).lean();
     }
 
