@@ -1,7 +1,7 @@
 import type { Guild, GuildMember, TextChannel } from "discord.js";
 import { Logger } from "@robo/logger";
 import { SettingsRepository, TicketRepository } from "@robo/db";
-import { resolvePlaces, t, type TicketAction, type TicketPlaces, resolveLifecycle, durationText } from "@robo/shared";
+import { resolvePlaces, t, type TicketAction, type TicketPlaces, resolveLifecycle, durationText, withoutEmojiTags } from "@robo/shared";
 import { canUse, isOneOf, isStaff, ticketOverwrites } from "@/Permissions";
 import { TicketAuditService } from "./TicketAuditService";
 import { channelSlug, TicketDiscordAdapter } from "./TicketDiscordAdapter";
@@ -84,9 +84,10 @@ export class TicketServices {
         const number = await settingsRepo.nextNumber(guild.id);
         const vars = ticketVars(guild, member, option, number);
         const pattern = option.channelName || "ticket-{number}";
-        const name = channelSlug(pattern.replace(/\{(\w+)\}/g, (m, k: string) => (k === "user" || k === "username" ? member.user.username : vars[k] ?? m)));
+        // Server emoji tags (<a:name:id>) would land in the name as long text: names keep only words.
+        const name = channelSlug(withoutEmojiTags(pattern.replace(/\{(\w+)\}/g, (m, k: string) => (k === "user" || k === "username" ? member.user.username : vars[k] ?? m))));
         const overwrites = ticketOverwrites(guild, option, { ownerId: member.id, claimerId: null, addedIds: [] });
-        const channel = await discord.createChannel(guild, name, places.categoryId, overwrites, `${option.label} · ${member.user.username}`);
+        const channel = await discord.createChannel(guild, name, places.categoryId, overwrites, `${withoutEmojiTags(option.label)} · ${member.user.username}`);
         if (!channel) return no(t(locale, "open.failed"));
         vars.channel = `<#${channel.id}>`;
 

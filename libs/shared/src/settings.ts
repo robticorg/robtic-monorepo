@@ -1262,7 +1262,7 @@ function normalizeControls(x: unknown, askReason: boolean): TicketControls {
         const placement = placementOf(it.placement, was);
         // The closed message's own placement: the old closed display, else what Reopen and Delete already had.
         const closedPlacement = placementOf(it.closedPlacement, c.closedDisplay !== undefined ? closedWas : a === 'reopen' || a === 'delete' ? placement : 'button');
-        return [a, { ...d.items[a], ...it, roleIds: arr<string>(it.roleIds), placement, closedPlacement }];
+        return [a, cleanLabel({ ...d.items[a], ...it, roleIds: arr<string>(it.roleIds), placement, closedPlacement })];
     })) as Record<TicketAction, TicketControlItem>;
     if (askReason && !obj(items.close).hasOwnProperty('reason')) merged.close.reason = true;
     merged.close.shown = true;
@@ -1302,12 +1302,29 @@ function normalizeQuestion(x: unknown): TicketQuestion {
     };
 }
 
+const EMOJI_TAG = /<a?:\w{2,32}:\d{15,22}>/g;
+
+/**
+ * A server emoji typed into a name (`Claim <a:ok:123>`) moves to the item's emoji: Discord can't draw it inside a
+ * button's text, and a channel named after it would carry the whole tag. The first one becomes the emoji when the
+ * item has none; the name keeps only its words.
+ */
+export function splitLabelEmoji(label: string, emoji: string): { label: string; emoji: string } {
+    const tags = label.match(EMOJI_TAG);
+    if (!tags) return { label, emoji };
+    return { label: label.replace(EMOJI_TAG, ' ').replace(/\s{2,}/g, ' ').trim(), emoji: emoji.trim() ? emoji : tags[0]! };
+}
+
+/** A name with any server emoji tags taken out (channel names, headings). */
+export const withoutEmojiTags = (text: string) => text.replace(EMOJI_TAG, ' ').replace(/\s{2,}/g, ' ').trim();
+
+const cleanLabel = <T extends { label: string; emoji: string }>(x: T): T => ({ ...x, ...splitLabelEmoji(String(x.label ?? ''), String(x.emoji ?? '')) });
+
 function normalizeOption(x: unknown, askReason: boolean, was: ItemPlacement): TicketOption {
     const o = obj(x);
     const d = newTicketOption(String(o.label ?? 'Support'));
     return {
-        ...d,
-        ...(o as Partial<TicketOption>),
+        ...cleanLabel({ ...d, ...(o as Partial<TicketOption>) }),
         placement: placementOf(o.placement, was),
         ...Object.fromEntries(PLACE_KEYS.map((k) => [k, (o[k] as string | null | undefined) ?? null])),
         supportRoleIds: arr(o.supportRoleIds),
@@ -1335,7 +1352,7 @@ function normalizePanel(x: unknown, askReason: boolean): TicketPanel {
         blacklistRoleIds: arr(p.blacklistRoleIds),
         display,
         options: rawOptions.map((o) => ({ ...normalizeOption(o, askReason, was), placement: was })),
-        infoButtons: arr<Loose>(p.infoButtons).map((i) => ({ ...newInfoItem(String(obj(i).panelId ?? '')), ...(obj(i) as Partial<TicketInfoItem>) })).filter((i) => i.panelId),
+        infoButtons: arr<Loose>(p.infoButtons).map((i) => cleanLabel({ ...newInfoItem(String(obj(i).panelId ?? '')), ...(obj(i) as Partial<TicketInfoItem>) })).filter((i) => i.panelId),
         message: infoAsBlock(_info, (p.message as MessageDesign | undefined) ?? newTicketPanel().message),
         posted: (p.posted as TicketPanel['posted'] | undefined) ?? null,
     };
