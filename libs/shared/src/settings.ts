@@ -348,7 +348,7 @@ export const TICKET_LIMITS = {
     perMember: 50,
     prefix: 5,
     notice: 500,
-    aliases: 5,
+    aliases: 8,
     alias: 20,
     /** Minutes between two calls of !come in one ticket. */
     cooldown: 1440,
@@ -552,9 +552,11 @@ export interface TicketPermissions {
 /* ------------------------------------------------------------------ the ticket controls */
 
 /** What can be done to a ticket. The first group sits on the open ticket's message; the second on the closed message. */
-export const TICKET_ACTIONS = ['close', 'claim', 'rename', 'add', 'remove', 'transfer', 'transcript', 'reopen', 'delete'] as const;
+export const TICKET_ACTIONS = ['close', 'claim', 'rename', 'add', 'remove', 'transfer', 'transcript', 'come', 'sleep', 'reopen', 'delete'] as const;
 export type TicketAction = (typeof TICKET_ACTIONS)[number];
-export const OPEN_ACTIONS: readonly TicketAction[] = ['close', 'claim', 'rename', 'add', 'remove', 'transfer', 'transcript'];
+export const OPEN_ACTIONS: readonly TicketAction[] = ['close', 'claim', 'rename', 'add', 'remove', 'transfer', 'transcript', 'come', 'sleep'];
+/** Come and Sleep: who may use them and their messages are set on their own pages, not on the button. */
+export const PAGE_ACTIONS: readonly TicketAction[] = ['come', 'sleep'];
 export const CLOSED_ACTIONS: readonly TicketAction[] = ['reopen', 'transcript', 'delete'];
 
 export const TICKET_ACTION_INFO: Record<TicketAction, { name: string; does: string; command: string; locked?: boolean }> = {
@@ -565,6 +567,8 @@ export const TICKET_ACTION_INFO: Record<TicketAction, { name: string; does: stri
     remove: { name: 'Remove member', does: 'Takes a member out of the ticket.', command: 'remove' },
     transfer: { name: 'Transfer', does: 'Gives the ticket to another staff member.', command: 'transfer' },
     transcript: { name: 'Transcript', does: 'Saves the conversation so far and sends the link.', command: 'transcript' },
+    come: { name: 'Come', does: 'Calls the ticket owner back with a direct message.', command: 'come' },
+    sleep: { name: 'Sleep', does: 'Reminds the owner now and starts the sleep countdown.', command: 'sleep' },
     reopen: { name: 'Reopen', does: 'Opens a closed ticket again.', command: 'reopen' },
     delete: { name: 'Delete', does: 'Deletes the channel (the transcript stays).', command: 'delete' },
 };
@@ -614,6 +618,8 @@ export const ACTION_SETTINGS: Record<TicketAction, readonly ('confirm' | 'reason
     remove: ['notice'],
     transfer: ['notice'],
     transcript: ['notice'],
+    come: [],
+    sleep: [],
     reopen: ['notice'],
     delete: ['confirm', 'delay', 'notice'],
 };
@@ -838,7 +844,7 @@ export interface TicketCome extends TicketWho {
 
 /* ------------------------------------------------------------------ commands */
 
-export const TICKET_COMMANDS = [...TICKET_ACTIONS, 'come', 'sleep'] as const;
+export const TICKET_COMMANDS = TICKET_ACTIONS;
 export type TicketCommand = (typeof TICKET_COMMANDS)[number];
 export const TICKET_COMMAND_INFO: Record<TicketCommand, { does: string; ar: string; args?: string }> = {
     close: { does: 'Close the ticket', ar: 'اغلاق', args: '[reason]' },
@@ -857,9 +863,18 @@ export const TICKET_COMMAND_INFO: Record<TicketCommand, { does: string; ar: stri
 export interface TicketCommandSetting {
     /** Off: the typed command and the slash command both answer that it's turned off. Buttons still work. */
     enabled: boolean;
-    /** Extra words for the typed command (the English and Arabic names always work). */
+    /**
+     * Every word that runs the typed command (after the prefix). Starts as the English and Arabic names; the server
+     * can remove them or add its own. Empty: only the slash command.
+     */
     aliases: string[];
+    /** Set once `aliases` holds the whole list. Older documents only kept extra words: the names are added on load. */
+    words?: true;
 }
+
+/** The typed words a command starts with: its English name and its Arabic spellings (the bot's built-in words). */
+const EXTRA_AR: Partial<Record<TicketCommand, string[]>> = { close: ['إغلاق', 'قفل'], add: ['إضافة'], remove: ['إزالة'], come: ['استدعاء'] };
+export const defaultCommandWords = (c: TicketCommand): string[] => [c, TICKET_COMMAND_INFO[c].ar, ...(EXTRA_AR[c] ?? [])];
 
 export interface TicketSettings {
     general: TicketGeneral;
@@ -986,6 +1001,9 @@ export const defaultTicketControls = (): TicketControls => ({
         remove: item('Remove', '➖', 'secondary', ['claimer', 'manager'], 'Take a member out'),
         transfer: item('Transfer', '🔁', 'secondary', ['claimer', 'manager'], 'Give it to another staff member', { shown: false }),
         transcript: item('Transcript', '📄', 'secondary', ['claimer', 'support', 'manager'], 'Save the conversation'),
+        // Hidden until a server shows them; who may use them is set on the Come and Sleep pages.
+        come: item('Come', '📣', 'secondary', ['claimer', 'support', 'manager'], 'Call the owner back', { shown: false }),
+        sleep: item('Sleep', '💤', 'secondary', ['claimer', 'support', 'manager'], 'Remind the owner', { shown: false }),
         reopen: item('Reopen', '🔓', 'success', ['claimer', 'support', 'manager'], 'Open it again'),
         delete: item('Delete', '🗑️', 'danger', ['manager'], 'Delete the channel', { confirm: true, delay: 5 }),
     },
@@ -1082,7 +1100,7 @@ export const defaultCome = (): TicketCome => ({
 });
 
 export const defaultCommands = (): Record<TicketCommand, TicketCommandSetting> =>
-    Object.fromEntries(TICKET_COMMANDS.map((c) => [c, { enabled: true, aliases: [] }])) as unknown as Record<TicketCommand, TicketCommandSetting>;
+    Object.fromEntries(TICKET_COMMANDS.map((c) => [c, { enabled: true, aliases: defaultCommandWords(c), words: true }])) as unknown as Record<TicketCommand, TicketCommandSetting>;
 
 export const noPlaces = (): TicketPlaces => ({ categoryId: null, closedCategoryId: null, logChannelId: null, transcriptChannelId: null });
 
@@ -1372,7 +1390,13 @@ export function normalizeTicketSettings(raw: unknown): TicketSettings {
         sleep: { ...d.sleep, ...(obj(r.sleep) as Partial<TicketSleep>), roleIds: arr(obj(r.sleep).roleIds), who: Array.isArray(obj(r.sleep).who) ? (obj(r.sleep).who as TicketTarget[]) : d.sleep.who },
         panels: arr(r.panels).map((p) => normalizePanel(p, askReason)),
         come: { ...d.come, ...(come as Partial<TicketCome>), roleIds: arr(come.roleIds), button: { ...d.come.button, ...obj(come.button) } },
-        commands: Object.fromEntries(TICKET_COMMANDS.map((c) => [c, { enabled: obj(commands[c]).enabled !== false, aliases: arr<string>(obj(commands[c]).aliases) }])) as TicketSettings['commands'],
+        commands: Object.fromEntries(TICKET_COMMANDS.map((c) => {
+            const s = obj(commands[c]);
+            const saved = arr<string>(s.aliases);
+            // Before the full list: the names always worked and `aliases` held only extras.
+            const aliases = s.words === true ? saved : [...new Set([...defaultCommandWords(c), ...saved])];
+            return [c, { enabled: s.enabled !== false, aliases, words: true }];
+        })) as TicketSettings['commands'],
         infoPanels: arr<Panel>(r.infoPanels),
         profile: { ...d.profile, ...(obj(r.profile) as Partial<BotProfile>) },
     };
@@ -1638,8 +1662,8 @@ export function validateTicketSection(section: TicketSectionKey, value: unknown)
         for (const c of TICKET_COMMANDS) {
             const s = cmds?.[c];
             if (!s) { out.push(`The ${c} command is missing.`); continue; }
-            if (s.aliases.length > TICKET_LIMITS.aliases) out.push(`${c}: at most ${TICKET_LIMITS.aliases} extra words.`);
-            for (const word of [c, TICKET_COMMAND_INFO[c].ar, ...s.aliases]) {
+            if (s.aliases.length > TICKET_LIMITS.aliases) out.push(`${c}: at most ${TICKET_LIMITS.aliases} typed words.`);
+            for (const word of s.words === true ? s.aliases : [...defaultCommandWords(c), ...s.aliases]) {
                 const w = word.toLowerCase();
                 if (!ALIAS.test(word)) out.push(`${c}: “${word}” must be one word up to ${TICKET_LIMITS.alias} characters.`);
                 else if (seen.has(w) && seen.get(w) !== c) out.push(`“${word}” is used by both ${seen.get(w)} and ${c}.`);

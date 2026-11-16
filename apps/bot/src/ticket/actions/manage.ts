@@ -1,5 +1,5 @@
 import type { APIModalInteractionResponseCallbackData, GuildMember, TextChannel } from "discord.js";
-import { resolveLifecycle, t, type TicketAction } from "@robo/shared";
+import { PAGE_ACTIONS, resolveLifecycle, t, type TicketAction } from "@robo/shared";
 import { check, type Result } from "..";
 import type { TicketContext } from "../types";
 import { contextOf } from "../utils";
@@ -55,6 +55,8 @@ export async function askFirst(inv: Invocation, ctx: TicketContext, action: "clo
 export async function runControl(action: TicketAction, inv: Invocation, actions: Record<TicketAction, ActionFn>) {
     const ctx = await contextOf(inv.channel.guild.id, inv.channel.id);
     if (!ctx) return inv.reply(t("en", "notTicket"));
+    // Come and Sleep (buttons or menu entries): their pages say who may use them, and they check it themselves.
+    if (PAGE_ACTIONS.includes(action)) return actions[action](inv, ctx);
     const denied = check(inv.member, ctx, action);
     if (denied) return inv.reply(denied.text);
     await actions[action](inv, ctx);
