@@ -2,9 +2,9 @@
 // the time into `beat` every few seconds; when it stops for longer than `limitMs`, this kills the process and Docker
 // starts it again (restart: unless-stopped).
 
-declare const self: Worker;
+const scope = globalThis as unknown as { onmessage: ((e: MessageEvent<{ beat: Int32Array; limitMs: number; pid: number }>) => void) | null };
 
-self.onmessage = (e: MessageEvent<{ beat: Int32Array; limitMs: number; pid: number }>) => {
+scope.onmessage = (e) => {
     const { beat, limitMs, pid } = e.data;
     setInterval(() => {
         const last = Atomics.load(beat, 0) * 1000;

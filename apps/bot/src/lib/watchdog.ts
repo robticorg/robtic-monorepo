@@ -51,7 +51,7 @@ export function startWatchdog(client: Client): void {
     try {
         const worker = new Worker(new URL("./watchdog-worker.ts", import.meta.url));
         worker.postMessage({ beat, limitMs: FROZEN_LIMIT_MS, pid: process.pid });
-        worker.unref?.();
+        (worker as Worker & { unref?: () => void }).unref?.();
     } catch (err) {
         Logger.warn(`[watchdog] freeze check unavailable: ${err}`);
     }

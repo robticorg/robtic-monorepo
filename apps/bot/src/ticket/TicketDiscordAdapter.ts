@@ -23,14 +23,18 @@ export class TicketDiscordAdapter {
         }
     }
 
+    /** One retry after a short wait: a dropped connection would otherwise leave a claim or close without its permissions. */
     async setOverwrites(channel: TextChannel, overwrites: OverwriteResolvable[]): Promise<boolean> {
-        try {
-            await channel.permissionOverwrites.set(overwrites);
-            return true;
-        } catch (err) {
-            Logger.error(`[Ticket] couldn't set permissions on ${channel.id}`, err);
-            return false;
+        for (let attempt = 1; attempt <= 2; attempt++) {
+            try {
+                await channel.permissionOverwrites.set(overwrites);
+                return true;
+            } catch (err) {
+                if (attempt === 2) Logger.error(`[Ticket] couldn't set permissions on ${channel.id}`, err);
+                else await new Promise((r) => setTimeout(r, 1500));
+            }
         }
+        return false;
     }
 
     /** Discord allows 2 renames per channel every 10 minutes: false when that limit is hit. */
