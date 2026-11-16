@@ -907,7 +907,71 @@ export interface TicketTemplate {
     createdAt: string;
     /** For the viewer: their own, or shared with them. */
     mine: boolean;
+    /** 'link': only people with its link or code. 'public': also listed in the public templates. */
+    visibility: TemplateVisibility;
+    /** For search in the public templates. */
+    tags: string[];
+    /** People who liked it (one each) and who used it on a server (one each). */
+    likes: number;
+    clones: number;
+    /** The viewer liked it. */
+    liked: boolean;
 }
+
+export type TemplateVisibility = 'link' | 'public';
+
+/** A template as anyone sees it: on its share page and in the public templates. */
+export interface TemplateCard {
+    code: string;
+    name: string;
+    description: string;
+    tags: string[];
+    ownerName: string;
+    ownerAvatar: string | null;
+    visibility: TemplateVisibility;
+    likes: number;
+    clones: number;
+    liked: boolean;
+    createdAt: string;
+    format: MessageDesign['format'];
+    display: 'buttons' | 'menu';
+    options: { label: string; emoji: string; description: string }[];
+}
+
+/** The share page: the card and the panel itself, for the preview. */
+export interface TemplateView extends TemplateCard {
+    panel: TicketPanel;
+}
+
+export interface TemplatePage {
+    items: TemplateCard[];
+    total: number;
+    /** The most used tags among public templates, for the filter chips. */
+    tags: { tag: string; count: number }[];
+}
+
+export const TEMPLATE_LIMITS = { tags: 5, tag: 20, description: 200, publicDescriptionMin: 10 } as const;
+export const TEMPLATE_SORTS = [['likes', 'Most liked'], ['clones', 'Most used'], ['new', 'Newest']] as const;
+export type TemplateSort = (typeof TEMPLATE_SORTS)[number][0];
+
+/** A tag as stored: lower case, letters, numbers and dashes, at most 20 characters. */
+export const cleanTag = (t: string) => t.trim().toLowerCase().replace(/^#/, '').replace(/\s+/g, '-').replace(/[^\p{L}\p{N}-]/gu, '').slice(0, TEMPLATE_LIMITS.tag);
+
+/** What a public template needs: a name, a description people can read, and at least one tag to be found by. */
+export function templateSharingErrors(s: { visibility: TemplateVisibility; name: string; description: string; tags: string[] }): string[] {
+    const out: string[] = [];
+    if (!s.name.trim()) out.push('Give the template a name.');
+    if (s.description.length > TEMPLATE_LIMITS.description) out.push(`The description is over ${TEMPLATE_LIMITS.description} characters.`);
+    if (s.tags.length > TEMPLATE_LIMITS.tags) out.push(`At most ${TEMPLATE_LIMITS.tags} tags.`);
+    if (s.visibility === 'public') {
+        if (s.description.trim().length < TEMPLATE_LIMITS.publicDescriptionMin) out.push('A public template needs a description (a sentence or two), so people know what it is.');
+        if (!s.tags.length) out.push('Add at least one tag, so people can find it.');
+    }
+    return out;
+}
+
+/** The share page's address. */
+export const templateUrl = (origin: string, code: string) => `${origin}/discord/public/templates/${encodeURIComponent(code)}`;
 
 /* ------------------------------------------------------------------ transcripts */
 
