@@ -203,9 +203,10 @@ export class TicketServices {
         return noticeOk(ctx, "transfer", await varsOf(channel.guild, ctx), { staff: mention(member.id), member: mention(target.id) });
     }
 
-    /** Saves the transcript now and answers with its link (or file). */
-    async transcript(channel: TextChannel, ctx: TicketContext): Promise<Result> {
-        const r = await archiveTicket(channel.guild, channel.id, { post: false });
+    /** Saves the transcript now and answers with its link (or file). The owner (not staff) gets the copy they were sent. */
+    async transcript(channel: TextChannel, ctx: TicketContext, member?: GuildMember): Promise<Result> {
+        const forOwner = !!member && member.id === ctx.ticket.ownerId && !isStaff(member, ctx);
+        const r = await archiveTicket(channel.guild, channel.id, { post: false, forOwner });
         const locale = ctx.settings.general.language;
         if (!r) return no(t(locale, "error"));
         return { ok: true, text: r.url ? t(locale, "transcript.ready", { channel: channel.name, link: r.url }) : t(locale, "transcript.file", { channel: channel.name }), files: [r.file] };

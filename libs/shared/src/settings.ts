@@ -697,8 +697,13 @@ export interface TicketLifecycle {
     closeConfirm: string;
 }
 
-/** Pictures in tickets: Robtic's own rule, the same everywhere (kept small: transcripts keep every picture). */
-export const TICKET_PICTURES = { perTicket: 1, maxMB: 8 } as const;
+/**
+ * Pictures in a designed message (a panel, a ticket message, a notice…): Robtic's rule, at most 2. An embed has two
+ * spots (image and thumbnail); in components, each Image block and each "Text with a picture" counts. What people send
+ * in a ticket's chat has no limit.
+ */
+export const DESIGN_IMAGES = 2;
+export const designImageCount = (m: Pick<MessageDesign, 'blocks'>) => m.blocks.filter((b) => b.type === 'image' || b.type === 'thumbText').length;
 
 export type TicketLifecycleOverride = { [K in keyof TicketLifecycle]: TicketLifecycle[K] | null };
 
@@ -1645,6 +1650,7 @@ function messageErrors(m: MessageDesign, where: string): string[] {
         if (text > PANEL_LIMITS.text) out.push(`${where}: the text is over ${PANEL_LIMITS.text} characters.`);
         if (!m.blocks.some((b) => (b.type === 'text' || b.type === 'thumbText') && !blank(b.content)) && !m.blocks.some((b) => b.type === 'image' && b.url)) out.push(`${where}: write something in it.`);
         for (const b of m.blocks) if (b.type === 'info') out.push(...infoBlockErrors(b, where));
+        if (designImageCount(m) > DESIGN_IMAGES) out.push(`${where}: up to ${DESIGN_IMAGES} pictures per message (Image and “Text with a picture” blocks).`);
     }
     return out;
 }
