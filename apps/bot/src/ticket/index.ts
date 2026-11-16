@@ -1,7 +1,7 @@
 import type { Guild, GuildMember, TextChannel } from "discord.js";
 import { Logger } from "@robo/logger";
 import { SettingsRepository, TicketRepository } from "@robo/db";
-import { resolvePlaces, t, type TicketAction, type TicketPlaces, resolveLifecycle, durationText, withoutEmojiTags } from "@robo/shared";
+import { resolvePlaces, t, type TicketAction, type TicketPlaces, resolveLifecycle, durationText, withoutEmojiTags, withStaffRoles } from "@robo/shared";
 import { canUse, isOneOf, isStaff, ticketOverwrites } from "@/Permissions";
 import { TicketAuditService } from "./TicketAuditService";
 import { channelSlug, TicketDiscordAdapter } from "./TicketDiscordAdapter";
@@ -34,7 +34,7 @@ function noticeOk(ctx: TicketContext, action: TicketAction, vars: Vars, who: { s
     if (item?.noticeStyle === "design" && !builtIn) {
         return { ok: true, text: "", payload: renderMessage(item.noticeDesign, { ...vars, staff: who.staff, member: who.member ?? "", name: who.name ?? "" }, [], { users: [], roles: [] }) };
     }
-    return noticeOk(ctx, action, vars, who, builtIn);
+    return ok(noticeText(ctx, action, vars, who, builtIn));
 }
 
 /** The checks every control shares: may this member do this, and does the ticket's state allow it? */
@@ -73,8 +73,10 @@ export class TicketServices {
         const s = await settingsRepo.get(guild.id);
         const locale = s.general.language;
         const panel = s.panels.find((p) => p.id === panelId);
-        const option = panel?.options.find((o) => o.id === optionId);
-        if (!panel || !option) return no(t(locale, "open.gone"));
+        const found = panel?.options.find((o) => o.id === optionId);
+        if (!panel || !found) return no(t(locale, "open.gone"));
+        // Support and manager roles: the option's, else the panel's, else the server's (or none).
+        const option = withStaffRoles(s.general, panel, found);
         if (!option.enabled) return no(t(locale, "open.disabled"));
         const places = resolvePlaces(s.general, panel, option);
         if (places.blacklistRoleIds.some((id) => member.roles.cache.has(id))) return no(t(locale, "open.blacklisted"));
@@ -140,7 +142,8 @@ export class TicketServices {
             // Closed already: save it again so it has what was said after closing (same link, no second post).
             await archiveTicket(channel.guild, channel.id, { post: false }).catch(() => null);
         }
-        await repo.update(channel.id, { deleteAt: null });
+        // A backup for the timer below: if the bot restarts during the wait, the auto-delete sweep removes it instead.
+        await repo.update(channel.id, { deleteAt: new Date(Date.now() + seconds * 1000 + 60_000) });
         await audit.log(channel.guild, placesOf(ctx).logChannelId, "log.deleted", { user: mention(member.id), name: channel.name });
         setTimeout(() => void discord.deleteChannel(channel), seconds * 1000);
         const custom = ctx.option?.controls.items.delete.notice.trim();

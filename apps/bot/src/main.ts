@@ -5,6 +5,7 @@ import { initLogger, Logger } from "@robo/logger";
 import type { CommandType } from "@/types";
 import client from "@/lib/Client";
 import { loadEvents } from "@/handlers/events.handler";
+import { startWatchdog } from "@/lib/watchdog";
 import { loadCommands, registerCommands } from "@/handlers/commands.handler";
 
 // Robtic Ticket: ticket panels designed on the dashboard (robtic.org/discord/public/<server>/ticket), private ticket
@@ -14,6 +15,7 @@ initLogger({ level: env.isDev ? "debug" : "info", json: false });
 
 client.commands = new Collection<string, CommandType>();
 
+startWatchdog(client);
 await connectDatabase(env.mongoUri);
 await loadEvents();
 await loadCommands();

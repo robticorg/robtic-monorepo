@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { defaultCommands, defaultTicketControls, missingArabic, durationText, newButton, newInfoBlock, newInfoItem, newPanel, resolveLifecycle, newQuestion, normalizeTicketSettings, newTicketOption, newTicketPanel, overwriteBits, t, validateTicketPanel } from "@robo/shared";
+import { defaultCommands, defaultTicketControls, missingArabic, durationText, newButton, newInfoBlock, newInfoItem, newPanel, resolveLifecycle, resolveManagerRoles, resolveSupportRoles, newQuestion, normalizeTicketSettings, newTicketOption, newTicketPanel, overwriteBits, t, validateTicketPanel } from "@robo/shared";
 import { mentionedId, parseCommand } from "../src/handlers/message.hendler";
 import { emojiOf, renderMessage } from "../src/lib/messagePayload";
 import { controlRows } from "../src/Permissions/buttons";
@@ -246,5 +246,51 @@ describe("round 2", () => {
         const m = questionsModal("p1", o, "en");
         expect(m.components.map((c) => (c as unknown as { type: number; component: { type: number } }).component.type)).toEqual([4, 3, 21, 22, 23]);
         expect(m.components.every((c) => (c as { type: number }).type === 18)).toBe(true);
+    });
+});
+
+describe("support roles cascade", () => {
+    const settings = () => normalizeTicketSettings({ general: { supportRoleIds: ["900000000000000001"] } });
+    test("an option without its own takes the panel's, else the server's", () => {
+        const s = settings();
+        const p = newTicketPanel();
+        const o = newTicketOption();
+        expect(resolveSupportRoles(s.general, p, o)).toEqual(["900000000000000001"]);
+        p.supportRoleIds = ["900000000000000002"];
+        expect(resolveSupportRoles(s.general, p, o)).toEqual(["900000000000000002"]);
+        o.supportRoleIds = ["900000000000000003"];
+        expect(resolveSupportRoles(s.general, p, o)).toEqual(["900000000000000003"]);
+    });
+    test("'no support roles' wins over the option's, the panel's and the server's", () => {
+        const s = settings();
+        const p = { ...newTicketPanel(), supportRoleIds: ["900000000000000002"] };
+        const o = { ...newTicketOption(), supportRoleIds: ["900000000000000003"], noSupport: true };
+        expect(resolveSupportRoles(s.general, p, o)).toEqual([]);
+    });
+    test("'No support roles' on the panel applies to its options without their own", () => {
+        const s = settings();
+        const p = { ...newTicketPanel(), noSupport: true };
+        expect(resolveSupportRoles(s.general, p, newTicketOption())).toEqual([]);
+        expect(resolveSupportRoles(s.general, p, { ...newTicketOption(), supportRoleIds: ["900000000000000003"] })).toEqual(["900000000000000003"]);
+    });
+    test("manager roles cascade the same way", () => {
+        const s = normalizeTicketSettings({ general: { managerRoleIds: ["900000000000000009"] } });
+        const p = newTicketPanel();
+        expect(resolveManagerRoles(s.general, p, newTicketOption())).toEqual(["900000000000000009"]);
+        expect(resolveManagerRoles(s.general, { ...p, managerRoleIds: ["900000000000000008"] }, newTicketOption())).toEqual(["900000000000000008"]);
+        expect(resolveManagerRoles(s.general, p, { ...newTicketOption(), noManager: true })).toEqual([]);
+    });
+    test("older documents get the new fields", () => {
+        const s = normalizeTicketSettings({ panels: [{ id: "p1", options: [{ id: "o1", label: "Help" }] }] });
+        expect(s.general.supportRoleIds).toEqual([]);
+        expect(s.panels[0]!.supportRoleIds).toEqual([]);
+        expect(s.panels[0]!.options[0]!.noSupport).toBe(false);
+        expect(s.general.managerRoleIds).toEqual([]);
+        expect(s.panels[0]!.noManager).toBe(false);
+    });
+    test("Come and Sleep are shown in new options", () => {
+        const c = defaultTicketControls();
+        expect(c.items.come.shown).toBe(true);
+        expect(c.items.sleep.shown).toBe(true);
     });
 });

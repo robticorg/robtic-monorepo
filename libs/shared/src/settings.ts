@@ -741,8 +741,14 @@ export interface TicketOption extends TicketPlaces {
 
     /** The ticket channel's name: {number} {username} {option}. */
     channelName: string;
+    /** This option's own support roles; empty: the panel's, else the server's (see resolveSupportRoles). */
     supportRoleIds: Snowflake[];
+    /** No support roles on these tickets, even when the panel or the server has some (managers still handle them). */
+    noSupport: boolean;
+    /** This option's own manager roles; empty: the panel's, else the server's. */
     managerRoleIds: Snowflake[];
+    /** No manager roles on these tickets, even when the panel or the server has some. */
+    noManager: boolean;
     /** Open tickets one member may have from this option at once; 0 = no limit. */
     perMember: number;
     /** Questions asked in a popup before the ticket opens (none = it opens straight away). */
@@ -770,6 +776,14 @@ export interface TicketPanel extends TicketPlaces {
     placeholder: string;
     /** Members with these roles can't open tickets here (added to the server's list). */
     blacklistRoleIds: Snowflake[];
+    /** Support roles for this panel's options that have none of their own; empty: the server's. */
+    supportRoleIds: Snowflake[];
+    /** No support roles for this panel's options that have none of their own, even when the server has some. */
+    noSupport: boolean;
+    /** Manager roles for this panel's options that have none of their own; empty: the server's. */
+    managerRoleIds: Snowflake[];
+    /** No manager roles for this panel's options that have none of their own. */
+    noManager: boolean;
     options: TicketOption[];
     /** Button panels only: info buttons beside the ticket buttons (each shows one of the server's info panels). */
     infoButtons: TicketInfoItem[];
@@ -785,6 +799,10 @@ export interface TicketGeneral extends TicketPlaces {
     transcriptToOwner: boolean;
     /** Members with these roles can't open tickets on any panel. */
     blacklistRoleIds: Snowflake[];
+    /** Default support roles: for every ticket option whose panel and option have none of their own. */
+    supportRoleIds: Snowflake[];
+    /** Default manager roles, the same way. */
+    managerRoleIds: Snowflake[];
     /** Tickets are numbered from here. */
     nextNumber: number;
     /** Robtic Staff points for the staff member who claims a ticket (sent to Robtic Staff's points API; needs Robtic
@@ -1065,9 +1083,9 @@ export const defaultTicketControls = (): TicketControls => ({
         remove: item('Remove', '➖', 'secondary', ['claimer', 'manager'], 'Take a member out'),
         transfer: item('Transfer', '🔁', 'secondary', ['claimer', 'manager'], 'Give it to another staff member', { shown: false }),
         transcript: item('Transcript', '📄', 'secondary', ['claimer', 'support', 'manager'], 'Save the conversation'),
-        // Hidden until a server shows them; who may use them is set on the Come and Sleep pages.
-        come: item('Come', '📣', 'secondary', ['claimer', 'support', 'manager'], 'Call the owner back', { shown: false }),
-        sleep: item('Sleep', '💤', 'secondary', ['claimer', 'support', 'manager'], 'Remind the owner', { shown: false }),
+        // Who may use them is set on the Come and Sleep pages.
+        come: item('Come', '📣', 'secondary', ['claimer', 'support', 'manager'], 'Call the owner back'),
+        sleep: item('Sleep', '💤', 'secondary', ['claimer', 'support', 'manager'], 'Remind the owner'),
         reopen: item('Reopen', '🔓', 'success', ['claimer', 'support', 'manager'], 'Open it again'),
         delete: item('Delete', '🗑️', 'danger', ['manager'], 'Delete the channel', { confirm: true, delay: 5 }),
     },
@@ -1180,7 +1198,9 @@ export function newTicketOption(label = 'Support', emoji = '🎫'): TicketOption
         ...noPlaces(),
         channelName: 'ticket-{number}',
         supportRoleIds: [],
+        noSupport: false,
         managerRoleIds: [],
+        noManager: false,
         perMember: 1,
         questions: [],
         welcome: defaultWelcome(),
@@ -1210,6 +1230,10 @@ export function newTicketPanel(name = 'Support'): TicketPanel {
         display: 'buttons',
         placeholder: 'What is your ticket about?',
         blacklistRoleIds: [],
+        supportRoleIds: [],
+        noSupport: false,
+        managerRoleIds: [],
+        noManager: false,
         options: [newTicketOption('Support', '🎫')],
         infoButtons: [],
         posted: null,
@@ -1281,7 +1305,7 @@ export const defaultSleep = (): TicketSleep => ({
 });
 
 export const defaultTicketSettings = (): TicketSettings => ({
-    general: { language: 'en', prefix: '!', ...noPlaces(), transcriptToOwner: true, blacklistRoleIds: [], nextNumber: 1, staffPoints: { enabled: true, perClaim: 1 }, lifecycle: defaultLifecycle(), transcriptPost: defaultTranscriptPost(), dmTranscript: defaultDmTranscript() },
+    general: { language: 'en', prefix: '!', ...noPlaces(), transcriptToOwner: true, blacklistRoleIds: [], supportRoleIds: [], managerRoleIds: [], nextNumber: 1, staffPoints: { enabled: true, perClaim: 1 }, lifecycle: defaultLifecycle(), transcriptPost: defaultTranscriptPost(), dmTranscript: defaultDmTranscript() },
     sleep: defaultSleep(),
     panels: [],
     come: defaultCome(),
@@ -1410,7 +1434,9 @@ function normalizeOption(x: unknown, askReason: boolean, was: ItemPlacement): Ti
         placement: placementOf(o.placement, was),
         ...Object.fromEntries(PLACE_KEYS.map((k) => [k, (o[k] as string | null | undefined) ?? null])),
         supportRoleIds: arr(o.supportRoleIds),
+        noSupport: o.noSupport === true,
         managerRoleIds: arr(o.managerRoleIds),
+        noManager: o.noManager === true,
         questions: arr(o.questions).map(normalizeQuestion),
         welcome: infoAsBlock(obj(o.controls).info, (o.welcome as MessageDesign | undefined) ?? d.welcome),
         closed: (o.closed as MessageDesign | undefined) ?? d.closed,
@@ -1432,6 +1458,10 @@ function normalizePanel(x: unknown, askReason: boolean): TicketPanel {
         ...Object.fromEntries(PLACE_KEYS.map((k) => [k, (p[k] as string | null | undefined) ?? null])),
         placeholder: typeof p.placeholder === 'string' ? p.placeholder : 'What is your ticket about?',
         blacklistRoleIds: arr(p.blacklistRoleIds),
+        supportRoleIds: arr(p.supportRoleIds),
+        noSupport: p.noSupport === true,
+        managerRoleIds: arr(p.managerRoleIds),
+        noManager: p.noManager === true,
         display,
         options: rawOptions.map((o) => ({ ...normalizeOption(o, askReason, was), placement: was })),
         infoButtons: arr<Loose>(p.infoButtons).map((i) => cleanLabel({ ...newInfoItem(String(obj(i).panelId ?? '')), ...(obj(i) as Partial<TicketInfoItem>) })).filter((i) => i.panelId),
@@ -1450,7 +1480,7 @@ export function normalizeTicketSettings(raw: unknown): TicketSettings {
     const come = obj(r.come);
     const commands = obj(r.commands);
     return {
-        general: { ...d.general, ...(general as Partial<TicketGeneral>), blacklistRoleIds: arr(g.blacklistRoleIds), staffPoints: { ...d.general.staffPoints, ...obj(g.staffPoints) } as TicketGeneral['staffPoints'], lifecycle: { ...d.general.lifecycle, ...pickKnown(obj(g.lifecycle), d.general.lifecycle) }, transcriptPost: normalizeTranscriptMessage(g.transcriptPost, d.general.transcriptPost), dmTranscript: normalizeTranscriptMessage(g.dmTranscript, d.general.dmTranscript) },
+        general: { ...d.general, ...(general as Partial<TicketGeneral>), blacklistRoleIds: arr(g.blacklistRoleIds), supportRoleIds: arr(g.supportRoleIds), managerRoleIds: arr(g.managerRoleIds), staffPoints: { ...d.general.staffPoints, ...obj(g.staffPoints) } as TicketGeneral['staffPoints'], lifecycle: { ...d.general.lifecycle, ...pickKnown(obj(g.lifecycle), d.general.lifecycle) }, transcriptPost: normalizeTranscriptMessage(g.transcriptPost, d.general.transcriptPost), dmTranscript: normalizeTranscriptMessage(g.dmTranscript, d.general.dmTranscript) },
         sleep: { ...d.sleep, ...(obj(r.sleep) as Partial<TicketSleep>), roleIds: arr(obj(r.sleep).roleIds), who: Array.isArray(obj(r.sleep).who) ? (obj(r.sleep).who as TicketTarget[]) : d.sleep.who },
         panels: arr(r.panels).map((p) => normalizePanel(p, askReason)),
         come: { ...d.come, ...(come as Partial<TicketCome>), roleIds: arr(come.roleIds), button: { ...d.come.button, ...obj(come.button) } },
@@ -1481,6 +1511,32 @@ export function resolvePlaces(g: TicketGeneral, p: TicketPanel, o: TicketOption)
         blacklistRoleIds: [...new Set([...g.blacklistRoleIds, ...p.blacklistRoleIds])],
     };
 }
+
+/** Support roles and manager roles each cascade the same way: the option's choice, else its panel's, else the server's. */
+export type StaffKind = 'support' | 'manager';
+type StaffPick = { supportRoleIds: Snowflake[]; noSupport: boolean; managerRoleIds: Snowflake[]; noManager: boolean };
+const STAFF_KEYS = { support: ['supportRoleIds', 'noSupport'], manager: ['managerRoleIds', 'noManager'] } as const;
+
+/**
+ * Where a ticket's support (or manager) roles come from. The option decides first ("No … roles", or its own roles); with
+ * neither it takes the panel's choice the same way; with neither there either, the server's (Settings). `from: 'none'`
+ * means "No … roles" was picked (on the option or the panel); `from: null` means nobody set any.
+ */
+export function staffSource(kind: StaffKind, g: Pick<TicketGeneral, 'supportRoleIds' | 'managerRoleIds'>, p: StaffPick | null, o: StaffPick | null): { ids: Snowflake[]; from: 'none' | 'option' | 'panel' | 'server' | null } {
+    const [ids, none] = STAFF_KEYS[kind];
+    for (const [level, from] of [[o, 'option'], [p, 'panel']] as const) {
+        if (!level) continue;
+        if (level[none]) return { ids: [], from: 'none' };
+        if (level[ids].length) return { ids: level[ids], from };
+    }
+    return g[ids].length ? { ids: g[ids], from: 'server' } : { ids: [], from: null };
+}
+
+export const resolveSupportRoles = (g: TicketGeneral, p: StaffPick | null, o: TicketOption): Snowflake[] => staffSource('support', g, p, o).ids;
+export const resolveManagerRoles = (g: TicketGeneral, p: StaffPick | null, o: TicketOption): Snowflake[] => staffSource('manager', g, p, o).ids;
+
+/** The option as a ticket uses it: its support and manager roles resolved through the panel and the server. */
+export const withStaffRoles = (g: TicketGeneral, p: StaffPick | null, o: TicketOption): TicketOption => ({ ...o, supportRoleIds: resolveSupportRoles(g, p, o), managerRoleIds: resolveManagerRoles(g, p, o) });
 
 /** Where a place's value comes from, for the dashboard's "from the panel / from Settings" hints. */
 export function placeSource(g: TicketGeneral, p: TicketPanel | null, o: TicketOption | null, k: PlaceKey): { id: Snowflake | null; from: 'option' | 'panel' | 'server' | null } {
@@ -1553,6 +1609,10 @@ export function panelFromTemplate(t: Pick<TicketTemplate, 'panel' | 'guildId' | 
         name: t.name,
         channelId: same ? p.channelId : null,
         blacklistRoleIds: same ? p.blacklistRoleIds : [],
+        supportRoleIds: same ? p.supportRoleIds : [],
+        noSupport: p.noSupport === true,
+        managerRoleIds: same ? p.managerRoleIds : [],
+        noManager: p.noManager === true,
         posted: null,
         infoButtons: same ? p.infoButtons : [],
         options: p.options.map((o) => ({
