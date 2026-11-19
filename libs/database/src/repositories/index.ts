@@ -28,6 +28,12 @@ export class SettingsRepository {
         cache.delete(guildId);
     }
 
+    /** The typed-command prefix, changed from Discord (/prefix) — the dashboard's General → Command prefix. */
+    async setPrefix(guildId: string, prefix: string) {
+        await TicketSettingsModel.updateOne({ guildId }, { $set: { 'general.prefix': prefix }, $setOnInsert: { guildId } }, { upsert: true });
+        this.forget(guildId);
+    }
+
     /** Where a panel was posted, written back so the dashboard shows it and "Update" edits it in place. */
     async setPosted(guildId: string, panelId: string, posted: TicketPanel['posted']) {
         const r = await TicketSettingsModel.updateOne({ guildId, 'panels.id': panelId }, { $set: { 'panels.$.posted': posted } });

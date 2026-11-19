@@ -3,6 +3,8 @@ import { SettingsRepository } from "@robo/db";
 import { t } from "@robo/shared";
 import { mentionedId, parseCommand } from "@/handlers/message.hendler";
 import { fromMessage } from "@/lib/invocation";
+import { checkPrefix, parsePrefixCommand, prefixText } from "@/lib/prefix";
+import { PermissionFlagsBits } from "discord.js";
 import { ACTIONS, runCome, runSleep, runControl } from "@/ticket/actions";
 
 const settings = new SettingsRepository();
@@ -13,6 +15,22 @@ export default {
     run: async (message: Message) => {
         if (!message.inGuild() || message.author.bot || !message.member) return;
         const s = await settings.get(message.guildId);
+        const quiet = { parse: [] as never[], repliedUser: false };
+        // Mentioning the bot alone tells the prefix (for when it's forgotten).
+        if (message.content.trim() === `<@${message.client.user.id}>` || message.content.trim() === `<@!${message.client.user.id}>`) {
+            await message.reply({ content: prefixText.current(s.general.prefix), allowedMentions: quiet }).catch(() => null);
+            return;
+        }
+        // !prefix ? — show or change the prefix (Manage Server to change).
+        const pc = parsePrefixCommand(message.content, s.general.prefix);
+        if (pc) {
+            if (!pc.rest) return void (await message.reply({ content: prefixText.current(s.general.prefix), allowedMentions: quiet }).catch(() => null));
+            if (!message.member.permissions.has(PermissionFlagsBits.ManageGuild)) return void (await message.reply({ content: prefixText.noPermission(), allowedMentions: quiet }).catch(() => null));
+            const check = checkPrefix(pc.rest);
+            if (!check.ok) return void (await message.reply({ content: prefixText.invalid(check.reason), allowedMentions: quiet }).catch(() => null));
+            await settings.setPrefix(message.guildId, check.prefix);
+            return void (await message.reply({ content: prefixText.changed(check.prefix), allowedMentions: quiet }).catch(() => null));
+        }
         const cmd = parseCommand(message.content, s.general.prefix, s.commands);
         if (!cmd) return;
         if (!cmd.enabled) {
